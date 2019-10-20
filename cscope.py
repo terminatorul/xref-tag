@@ -69,7 +69,7 @@ def run_cscope(target, source, env):
 
     command = env.Split(env['CSCOPE']) + env.Split(env['CSCOPEFLAGS'])
 
-    for incdir in env.Split(env['CSCOPEINC']):
+    for incdir in env.Split(env['CSCOPEPATH']):
         command += env.Split(env['CSCOPEINCFLAG']) + [ incdir ]
 
     command += env.Split(env['CSCOPESTDINFLAGS']) + env.Split(env['CSCOPEOUTPUTFLAG']) + [ str(target[0]) ]
@@ -114,7 +114,7 @@ def show_refs_generation_message(target, source, env):
 def generate(env, **kw):
     """
         Populate environment with variables for the CScopeXRef() builder:
-            $CSCOPE, $CSCOPEFILE, $CSCOPEFLAGS, $CSCOPEINC, $CSCOPEINCFLAG,
+            $CSCOPE, $CSCOPEFILE, $CSCOPEFLAGS, $CSCOPEPATH, $CSCOPEINCFLAG,
             $CSCOPESUFFIXES, $CSCOPESTDINFLAGS, $CSCOPEOUTPUTFLAG
 
         Attach the CScopeXRef() builder to the environment.
@@ -126,7 +126,7 @@ def generate(env, **kw):
             CSCOPEQUICKFLAG  = [ '-q' ],
             CSCOPEFLAGS      = [ '-b', '-q', '-k' ],
             CSCOPEINCFLAG    = [ '-I' ],
-            CSCOPEINC        = [ ],
+            CSCOPEPATH       = [ ],
             CSCOPESTDINFLAGS = [ '-i', '-' ],
             CSCOPEOUTPUTFLAG = [ '-f' ],
             CSCOPEFILE       = '#cscope.out',
