@@ -45,39 +45,57 @@ def collect_source_dependencies(target, source, env):
         else:
             target[0] = ext[0]  # remove automatically added extension
 
+    getList = base.BindCallArguments(base.getList, target, source, env, False)
+    getString = base.BindCallArguments(base.getString, target, source, env, None)
+
     if not len(target):
-        target.append(env['CSCOPEFILE'])
+        target.append(getString('CSCOPEFILE'))
 
-    for flag in env.Split(env['CSCOPEQUICKFLAG']):
-        if flag in env.Split(env['CSCOPEFLAGS']):
-            ext = os.path.splitext(str(target[0]))
-
-            if (ext == '.out'):
-                target += [ ext[0] + '.in.out', ext[0] + '.po.out' ]
-            else:
-                target += [ str(target[0]) + '.in', str(target[0]) + '.po' ]
-
+    for flag in getList('CSCOPEQUICKFLAG'):
+        if flag in getList('CSCOPEFLAGS'):
+            target += [ str(target[0]) + '.in', str(target[0]) + '.po' ]
             break
 
     if 'CSCOPENAMEFILE' in env:
-        target.append(env['CSCOPENAMEFILE'])
+        target.append(getString('CSCOPENAMEFILE'))
 
-    return base.collect_source_dependencies(target, source, env, 'CSCOPESUFFIXES')
+    return base.collect_source_dependencies(target, source, env, 'CSCOPESUFFIXES', True)
 
 def run_cscope(target, source, env):
     """ action function invoked by the CScopeXRef() Builder to run `cscope` command """
 
-    command = env.Split(env['CSCOPE']) + env.Split(env['CSCOPEFLAGS'])
+    getList   = base.BindCallArguments(base.getList,   target, source, env, False)
+    getString = base.BindCallArguments(base.getString, target, source, env, None)
 
-    for incdir in env.Split(env['CSCOPEPATH']):
-        command += env.Split(env['CSCOPEINCFLAG']) + [ incdir ]
+    command = getList('CSCOPE') + getList('CSCOPEFLAGS')
 
-    command += env.Split(env['CSCOPESTDINFLAGS']) + env.Split(env['CSCOPEOUTPUTFLAG']) + [ str(target[0]) ]
+    command += getList('CSCOPESTDINFLAGS') + getList('CSCOPEOUTPUTFLAG') + [ str(target[0]) ]
 
     namefile = None
 
     if 'CSCOPENAMEFILE' in env:
-        namefile = open(str(env.File(env['CSCOPENAMEFILE'])), 'w')
+        namefile = open(str(env.File(getString('CSCOPENAMEFILE'))), 'w')
+
+        nameFileFlags = getList('CSCOPENAMEFILEFLAGS')
+
+        for arg in command:
+            if arg in nameFileFlags:
+                namefile.write(arg)
+                namefile.write('\n')
+
+    for incdir in getList('CSCOPEPATH') + getList('CSCOPESYSPATH'):
+        command += getList('CSCOPEINCFLAG') + [ incdir ]
+
+        if namefile is not None:
+            for arg in getList('CSCOPEINCFLAG'):
+                namefile.write(arg)
+                namefile.write(' ')
+
+            if incdir.find(' ') >= 0:
+                incdir = '"' + incdir.replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+            namefile.write(incdir)
+            namefile.write('\n')
 
     try:
         print(" ".join(base.shell_escape(command)))
@@ -88,11 +106,13 @@ def run_cscope(target, source, env):
         for file in source:
             file_str = str(file)
 
-            if file_str.find(' '):
+            if file_str.find(' ') >= 0:
                 file_str = '"' + file_str.replace('\\', '\\\\').replace('"', '\\"') + '"'
 
-            print("Generating xrefs for source file " + file_str)
-            namefile.write(file_str + '\n')
+            # print("Generating xrefs for source file " + file_str)
+            if namefile is not None:
+                namefile.write(file_str + '\n')
+
             cscope_process.stdin.write(file_str + '\n')
 
         cscope_process.stdin.close()
@@ -122,20 +142,23 @@ def generate(env, **kw):
 
     env.SetDefault\
         (
-            CSCOPE           = cscope_bin,
-            CSCOPEQUICKFLAG  = [ '-q' ],
-            CSCOPEFLAGS      = [ '-b', '-q', '-k' ],
-            CSCOPEINCFLAG    = [ '-I' ],
-            CSCOPEPATH       = [ ],
-            CSCOPESTDINFLAGS = [ '-i', '-' ],
-            CSCOPEOUTPUTFLAG = [ '-f' ],
-            CSCOPEFILE       = '#cscope.out',
-            CSCOPENAMEFILE   = '#cscope.files',
-            CSCOPESUFFIXES   =
+            CSCOPE              = cscope_bin,
+            CSCOPEQUICKFLAG     = [ '-q' ],
+            CSCOPEFLAGS         = [ '-b', '-q', '-k' ],
+            CSCOPEINCFLAG       = [ '-I' ],
+            CSCOPEPATH          = lambda target, source, env, for_signature: env['CPPPATH'],
+            CSCOPESYSPATH       = [ ],
+            CSCOPESTDINFLAGS    = [ '-i', '-' ],
+            CSCOPEOUTPUTFLAG    = [ '-f' ],
+            CSCOPEFILE          = '#cscope.out',
+            CSCOPENAMEFILE      = '#cscope.files',
+            CSCOPENAMEFILEFLAGS = [ '-I', '-c', '-k', '-p', '-q', '-T' ],
+            CSCOPESUFFIXES      =
                 [
                     '',
                     '.c', '.y',
-                    '.i', '.c++', '.cc', '.cp', '.cpp', '.cxx', '.h', '.h++', '.hh', '.hp', '.hpp', '.hxx', '.C', '.H',
+                    '.i', '.c++', '.cc', '.cp', '.cpp', '.cxx',
+                    '.h', '.h++', '.hh', '.hp', '.hpp', '.hxx', '.C', '.H', '.tcc',
                 ]
         )
 
