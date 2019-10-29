@@ -165,7 +165,7 @@ def generate(env, **kw):
             CFLOWSUFFIXES   =
                 [
                     '.c', '.y',
-                    '','.c++', '.cc', '.cp', '.cpp', '.cxx', '.h', '.h++', '.hh', '.hp', '.hpp', '.hxx', '.C', '.H'
+                    '','.c++', '.cc', '.cp', '.cpp', '.cxx', '.h', '.h++', '.hh', '.hp', '.hpp', '.hxx', '.C', '.H', '.tcc'
                 ],
             CFLOWCPP        = [ ]
         )

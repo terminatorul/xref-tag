@@ -103,11 +103,11 @@ def generate(env, **kw):
             CTAGS           = ctags_bin,
             CTAGSFLAGS      =
                 [
-                    '-h', '+.',
+                    '-h', '+.tcc.',
                     '--c-kinds=+px',
                     '--c++-kinds=+px',
                     '--extra=+q',
-                    '--langmap=c++:+.',
+                    '--langmap=c++:+.tcc.',
                     '--fields=+iaSt',
                     '--totals=yes'
                 ],
@@ -132,7 +132,8 @@ def generate(env, **kw):
                     '.bas', '.bi', '.bb', '.pb',
                     '.bet',
                     '.c',
-                    '.c++', '.cc', '.cp', '.cpp', '.cxx', '.h', '.h++', '.hh', '.hp', '.hpp', '.hxx', '.C', '.H',
+                    '.c++', '.cc', '.cp', '.cpp', '.cxx',
+                    '.h', '.h++', '.hh', '.hp', '.hpp', '.hxx', '.C', '.H', '.tcc',
                     '.cs',
                     '.cbl', '.cob', '.CBL', '.COB',
                     '.bat', '.cmd',

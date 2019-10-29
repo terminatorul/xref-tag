@@ -161,7 +161,7 @@ def generate(env, **kw):
             GTAGSCONFIG     = \
                 [
                     'default:\\',
-                    '   :langmap=c\\:.c.h,yacc\\:.y,asm\\:.s.S,java\\:.java,cpp\\:.c++.cc.hh.cpp.cxx.hxx.hpp.C.H,php\\:.php.php3.phtml,cpp\\:(*):'
+                    '   :langmap=c\\:.c.h,yacc\\:.y,asm\\:.s.S,java\\:.java,cpp\\:.c++.cc.hh.cpp.cxx.hxx.hpp.C.H.tcc,php\\:.php.php3.phtml,cpp\\:(*):'
                 ],
             GTAGSSUFFIXES   =
                 [
@@ -170,7 +170,7 @@ def generate(env, **kw):
                     '.y',
                     '.s', '.S',
                     '.java',
-                    '.c++', '.cc', '.hh', '.cpp', '.cxx', '.hxx', '.hpp', '.C', '.H', '',
+                    '.c++', '.cc', '.hh', '.cpp', '.cxx', '.hxx', '.hpp', '.C', '.H', '.tcc', '',
                     '.php', '.php3', '.phtml'
                 ]
         )
