@@ -25,6 +25,8 @@
     C/C++ scanner will be available to `cscope` command.
 """
 
+from __future__ import print_function
+
 import sys
 import os
 import subprocess
@@ -56,16 +58,22 @@ def collect_source_dependencies(target, source, env):
             target += [ str(target[0]) + '.in', str(target[0]) + '.po' ]
             break
 
-    if 'CSCOPENAMEFILE' in env:
+    if getString('CSCOPENAMEFILE'):
         target.append(getString('CSCOPENAMEFILE'))
+
+        default_namefile = getString('CSCOPEDEFAULTNAMEFILE')
+
+        if getString('CSCOPENAMEFILE') == default_namefile:
+            env.SideEffect(default_namefile + '.8ebd1f37-538d-4d1b-a9f7-7fefa88581e4'. target)
 
     return base.collect_source_dependencies(target, source, env, 'CSCOPESUFFIXES', True)
 
 def run_cscope(target, source, env):
     """ action function invoked by the CScopeXRef() Builder to run `cscope` command """
 
-    getList   = base.BindCallArguments(base.getList,   target, source, env, False)
-    getString = base.BindCallArguments(base.getString, target, source, env, None)
+    getList     = base.BindCallArguments(base.getList,   target, source, env, False)
+    getPathList = base.BindCallArguments(base.getPathList, target, source, env, False)
+    getString   = base.BindCallArguments(base.getString, target, source, env, None)
 
     command = getList('CSCOPE') + getList('CSCOPEFLAGS')
 
@@ -83,7 +91,7 @@ def run_cscope(target, source, env):
                 namefile.write(arg)
                 namefile.write('\n')
 
-    for incdir in getList('CSCOPEPATH') + getList('CSCOPESYSPATH'):
+    for incdir in getPathList('CSCOPEPATH') + getPathList('CSCOPESYSPATH'):
         command += getList('CSCOPEINCFLAG') + [ incdir ]
 
         if namefile is not None:
@@ -124,6 +132,66 @@ def run_cscope(target, source, env):
         if namefile is not None:
             namefile.close()
 
+def process_source_and_target(target, source, env):
+    """ emitter function for CScopeDirXRef() builder, for listing sources of any target node included in the xref file """
+
+    ext = os.path.splitext(str(env.File(target[0]).path)) if len(target) else ''
+
+    if ext[1] == '.8ebd1f37-538d-4d1b-a9f7-7fefa88581e4':
+        if len(source) and ext[0] == os.path.splitext(str(env.File(source[0]).path))[0]:
+            target = [ ]
+        else:
+            target[0] = ext[0]  # remove automatically added extension
+
+    getList = base.BindCallArguments(base.getList, target, source, env, False)
+    getString = base.BindCallArguments(base.getString, target, source, env, None)
+
+    if not target:
+        target.append(getString('CSCOPEFILE'))
+
+    for flag in getList('CSCOPEQUICKFLAG'):
+        if flag in getList('CSCOPEFLAGS'):
+            target += [ str(target[0]) + '.in', str(target[0]) + '.po' ]
+            break
+
+    default_namefile = getString('CSCOPEDEFAULTNAMEFILE')
+
+    if default_namefile:
+        env.SideEffect(default_namefile + '.8ebd1f37-538d-4d1b-a9f7-7fefa88581e4', target)
+
+    # if env.Dir('.').srcnode() not in source:
+    #     source = [ env.Dir('.').srcnode() ] + source
+
+    return env.AlwaysBuild(target), source
+
+def run_cscope_on_dirs(target, source, env):
+    """ action function invoked by the CScopeDirXRef() Builder to run `cscope` command """
+
+    getList     = base.BindCallArguments(base.getList,     target, source, env, False)
+    getPathList = base.BindCallArguments(base.getPathList, target, source, env, False)
+    getString   = base.BindCallArguments(base.getString,   target, source, env, None)
+
+    command = getList('CSCOPE') + getList('CSCOPEFLAGS') + getList('CSCOPEOUTPUTFLAG') + [ str(target[0]) ]
+
+    for incdir in getPathList('CSCOPEPATH') + getPathList('CSCOPESYSPATH'):
+        command += getList('CSCOPEINCFLAG') + [ incdir ]
+
+    for srcdir in source:
+        command += getList('CSCOPESOURCEDIRFLAG') + [ str(srcdir) ]
+
+    default_namefile = getString('CSCOPEDEFAULTNAMEFILE')
+
+    if os.path.exists(default_namefile):
+        os.rename(default_namefile, default_namefile + '.8ebd1f37-538d-4d1b-a9f7-7fefa88581e4')
+
+    try:
+        print(' '.join(base.shell_escape(command)))
+
+        return subprocess.Popen(command, env = env['ENV']).wait()
+    finally:
+        if os.path.exists(default_namefile):
+            os.rename(default_namefile + '.8ebd1f37-538d-4d1b-a9f7-7fefa88581e4', default_namefile)
+
 def exists(env):
     """ Check if `cscope` command is present """
     return env['CSCOPE'] if 'CSCOPE' in env else None
@@ -135,9 +203,11 @@ def generate(env, **kw):
     """
         Populate environment with variables for the CScopeXRef() builder:
             $CSCOPE, $CSCOPEFILE, $CSCOPEFLAGS, $CSCOPEPATH, $CSCOPEINCFLAG,
-            $CSCOPESUFFIXES, $CSCOPESTDINFLAGS, $CSCOPEOUTPUTFLAG
+            $CSCOPESUFFIXES, $CSCOPESTDINFLAGS, $CSCOPEOUTPUTFLAG,
+            $CSCOPESOURCESUFFIXES, $CSCOPERECURSIVEFLAG, $CSCOPESOURCEDIRFLAG,
+            $CSCOPEDEFAULTNAMEFILE
 
-        Attach the CScopeXRef() builder to the environment.
+        Attach the CScopeXRef() and CScopeDirXRef() builders to the environment.
     """
 
     env.SetDefault\
@@ -156,10 +226,17 @@ def generate(env, **kw):
             CSCOPESUFFIXES      =
                 [
                     '',
-                    '.c', '.y',
-                    '.i', '.c++', '.cc', '.cp', '.cpp', '.cxx',
-                    '.h', '.h++', '.hh', '.hp', '.hpp', '.hxx', '.C', '.H', '.tcc',
-                ]
+                    '.c', '.y', '.l',
+                    '.i', '.c++', '.cc', '.cp', '.cpp', '.cxx', '.C',
+                    '.h', '.h++', '.hh', '.hp', '.hpp', '.hxx', '.H', '.tcc',
+                ],
+            CSCOPESOURCESUFFIXES  =
+                [
+                    '.c', '.y', '.l', '.i', '.c++', '.cc', '.cp', 'cpp', '.C'
+                ],
+            CSCOPERECURSIVEFLAG   = [ '-R' ],
+            CSCOPESOURCEDIRFLAG   = [ '-s' ],
+            CSCOPEDEFAULTNAMEFILE = 'cscope.files'
         )
 
     env['BUILDERS']['CScopeXRef'] = env.Builder\
@@ -170,5 +247,15 @@ def generate(env, **kw):
                 name    = 'CScopeXRef',
                 suffix  = '9afe1b0b-baf3-4dde-8c8f-338b120bc882',
                 # source_scanner = SCons.Script.CScan
+            )
+
+    env['BUILDERS']['CScopeDirXRef'] = env.Builder\
+            (
+                emitter         = process_source_and_target,
+                action          = SCons.Script.Action(run_cscope_on_dirs, show_refs_generation_message),
+                multi           = True,
+                name            = 'CScopeDirXRef',
+                suffix          = '8ebd1f37-538d-4d1b-a9f7-7fefa88581e4',
+                source_factory  = SCons.Script.Dir
             )
 
