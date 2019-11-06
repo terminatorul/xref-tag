@@ -22,6 +22,9 @@ def getPathList(target, source, env, for_signature, var):
 def getString(target, source, env, conv, var):
     return env.subst(env[var](target, source, env, False) if callable(env[var]) else env[var], False, target, source) if var in env else ''
 
+def getPath(target, source, env, conv, var):
+    return str(env.Dir(getString(target, source, env, conv, var)))
+
 class BindCallArguments:
     """ Creates a path_function for Scanner's, given a callable returned by FindPathDirs() """
     def __init__(self, baseObject, *arglist):
