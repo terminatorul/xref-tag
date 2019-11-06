@@ -29,6 +29,7 @@ from __future__ import print_function
 
 import sys
 import os
+import re
 import subprocess
 import SCons.Script
 import source_browse_base as base
@@ -99,22 +100,20 @@ def run_cscope(target, source, env):
                 namefile.write(arg)
                 namefile.write(' ')
 
-            if incdir.find(' ') >= 0:
+            if re.search('[\s"]', incdir) is not None:
                 incdir = '"' + incdir.replace('\\', '\\\\').replace('"', '\\"') + '"'
 
             namefile.write(incdir)
             namefile.write('\n')
 
     try:
-        print(" ".join(base.shell_escape(command)))
-
         cscope_process = subprocess.Popen(command, stdin = subprocess.PIPE, env = env['ENV'])
 
         source.sort()
         for file in source:
             file_str = str(file)
 
-            if file_str.find(' ') >= 0:
+            if re.search('[\s"]', file_str) is not None:
                 file_str = '"' + file_str.replace('\\', '\\\\').replace('"', '\\"') + '"'
 
             # print("Generating xrefs for source file " + file_str)
@@ -236,13 +235,42 @@ def generate(env, **kw):
                 ],
             CSCOPERECURSIVEFLAG   = [ '-R' ],
             CSCOPESOURCEDIRFLAG   = [ '-s' ],
-            CSCOPEDEFAULTNAMEFILE = 'cscope.files'
+            CSCOPEDEFAULTNAMEFILE = 'cscope.files',
+            CSCOPELISTINCLUDES    =
+                lambda target, source, env, for_signature:
+                    [
+                        env['CSCOPEINCFLAG']
+                            +
+                        [
+                            path if re.search('[\s' + re.escape(']&*?\'"!?[|)(;><]') + ']', path) is None
+                                else env.ESCAPE(path)
+                        ]
+                            for path_variable in [ 'CSCOPEPATH', 'CSCOPESYSPATH' ]
+                                for path in base.getPathList(target, source, env, None, path_variable)
+                    ],
+            CSCOPELISTINPUT       =
+                lambda target, source, env, for_signature:
+                    '\n'.join\
+                        (
+                            [
+                                arg if re.search('[\s"]', arg) is None
+                                    else arg.replace('\\', '\\\\').replace('"', '\\"')
+                                    for arg in sorted([ str(src) for src in source ])
+                            ]
+                        ),
+            CSCOPESHOWINPUT       = False,
+            CSCOPECOMSTR          =
+                "$CSCOPE $CSCOPEFLAGS $CSCOPESTDINFLAGS $CSCOPELISTINCLUDES $CSCOPEOUTPUTFLAG $TARGET "
+                    +
+                '${CSCOPESHOWINPUT and "<<\'--END OF NAMEFILE\'" + chr(10) or ""}'
+                '${CSCOPESHOWINPUT and CSCOPELISTINPUT                     or ""}'
+                '${CSCOPESHOWINPUT and chr(10) + "--END OF NAMEFILE"       or ""}',
         )
 
     env['BUILDERS']['CScopeXRef'] = env.Builder\
             (
                 emitter = collect_source_dependencies,
-                action  = SCons.Script.Action(run_cscope, show_refs_generation_message),
+                action  = SCons.Script.Action(run_cscope, '$CSCOPECOMSTR'),
                 multi   = True,
                 name    = 'CScopeXRef',
                 suffix  = '9afe1b0b-baf3-4dde-8c8f-338b120bc882',
