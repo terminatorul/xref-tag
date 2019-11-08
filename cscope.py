@@ -10,8 +10,9 @@
         CScopeXRef([ target, ... ])
         CScopeXRef([ target, ... sources, ... ])
 
-    If omitted, the output cross-reference file name is given in $CSCOPEFILE, default '#cscope.out'. Files for
-    two additional indexes will be created by default to speed up searches: '#csope.in.out' and '#cscope.po.out'
+    If omitted, the output cross-reference file name is given in $CSCOPEFILE, default 'cscope.out' in the
+    source directory. Files for two additional indexes will be created by default to speed up searches:
+    'csope.out.in' and 'cscope.out.po'
 
     The dependencies are usually other targets from your build script. Source dependencies of such targets will
     be traversed and added to the list of input files for `cscope` command.
@@ -219,8 +220,29 @@ def generate(env, **kw):
             CSCOPESYSPATH       = [ ],
             CSCOPESTDINFLAGS    = [ '-i', '-' ],
             CSCOPEOUTPUTFLAG    = [ '-f' ],
-            CSCOPEFILE          = '#cscope.out',
-            CSCOPENAMEFILE      = '#cscope.files',
+            CSCOPEFILE          =
+                lambda target, source, env, for_signature:
+                    env.Dir('.').srcnode().File('cscope.out'),
+            CSCOPENAMEFILE      =
+                lambda target, source, env, for_signature:
+                    (
+                        lambda node:
+                            node.File
+                                (
+                                    (lambda base, ext: base if ext == '.out' else base + ext)
+                                        (
+                                            *os.path.splitext(node.name)
+                                        )
+                                        +
+                                    '.files'
+                                )
+                    )
+                        (
+                            env.File
+                            (
+                                target[0] if target else env.subst('CSCOPEFILE', False, target, source)
+                            )
+                        ),
             CSCOPENAMEFILEFLAGS = [ '-I', '-c', '-k', '-p', '-q', '-T' ],
             CSCOPESUFFIXES      =
                 [

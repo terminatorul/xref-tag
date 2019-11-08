@@ -12,7 +12,7 @@
         TagsFile([ target, ... ])
         TagsFile([ target, ... sources, ... ])
 
-    If omitted, the output tags file name is given in $CTAGSFILE, default '#tags'
+    If omitted, the output tags file name is given in $CTAGSFILE, default 'tags' in the source directory
 
     The dependencies are usually other targets from your build script. Source dependencies of such targets will
     be traversed and added to the list of input files for `ctags` command.
@@ -47,7 +47,8 @@ def collect_source_dependencies(target, source, env):
             target[0] = ext[0]  # remove automatically added extension
 
     if not len(target):
-        target.append(env['CTAGSFILE'])
+        getString = base.BindCallArguments(base.getString, target, source, env, None)
+        target.append(getString('CTAGSFILE'))
 
     if 'CTAGSCONFIG' in env:
         for tgt in target:
@@ -120,7 +121,7 @@ def generate(env, **kw):
                     '_GLIBCXX_VISIBILITY+',
                     '_GLIBCXX_VISIBILITY(x)'
                 ],
-            CTAGSFILE       = '#tags',
+            CTAGSFILE       = lambda target, source, env, for_signature: env.Dir('.').srcnode().File('tags'),
             CTAGSCONFIG     = [ '/etc/ctags.conf', '/usr/local/etc/ctags.conf', os.path.join(os.environ['HOME'], '.ctags'), '#.ctags' ],
             CTAGSSUFFIXES   =
                 [

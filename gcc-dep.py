@@ -16,16 +16,20 @@
 """
 
 import os
-import source_browse_base as base
+import re
+import errno
 
+import SCons.Script
 from SCons.Builder import DictEmitter, CompositeBuilder
 from SCons.Builder import ListEmitter
 from SCons.Action  import ListAction
 
+import source_browse_base as base
+
 def gcc_dep_emitter(target, source, env):
     """
         emitter function for SCons Builders, injected into the existing Object / SharedObject
-        builders in the environment, to include and load the new dependency file with the 
+        builders in the environment, to include and load the new dependency file with the
         object
     """
     getList     = base.BindCallArguments(base.getList,   target, source, env, False)
@@ -35,14 +39,29 @@ def gcc_dep_emitter(target, source, env):
         ext = os.path.splitext(str(source[0]))[1]
 
         if ext in getList('GCCDEP_SUFFIXES'):
-            env.SideEffect(str(target[0]) + getString('GCCDEP_SUFFIX'), target[0])
-            env.ParseDepends(str(target[0]) + getString('GCCDEP_SUFFIX'))
-            env.Clean(target[0], str(target[0]) + getString('GCCDEP_SUFFIX'))
+
+            if callable(env['GCCDEP_FILENAME']):
+                # make explicit call to work around the relative path outside issue
+                dep_file = env.File(env['GCCDEP_FILENAME'](target, source, env, False))
+            else:
+                dep_file = env.File(env.subst('$GCCDEP_FILENAME', False, source, target))
+
+            env.SideEffect(dep_file, target[0])
+
+            script_dir = env.fs.getcwd()
+            env.fs.chdir(env.Dir('#'))
+
+            try:
+                env.ParseDepends(dep_file.get_abspath())
+            finally:
+                env.fs.chdir(script_dir)
+
+            env.Clean(target[0], dep_file)
 
     return target, source
 
 def reload_dependency_file(target, source, env):
-    env.ParseDepends(str(target[0]) + base.getString(target, source, env, False, 'GCCDEP_SUFFIX'))
+    env.ParseDepends(env.subst('$GCCDEP_FILENAME', False, target, source))
 
 def generate(env, **kw):
     """
@@ -57,7 +76,19 @@ def generate(env, **kw):
         (
             GCCDEP_SUFFIX   = '.d',
             GCCDEP_SUFFIXES = [ '.c', '.cc', '.cpp', '.cxx', '.c++', '.C++', '.C' ],
-            GCCDEP_FLAGS    = [ '-MD', '-MF', '${TARGET}${GCCDEP_SUFFIX}', '-MT', '${TARGET.abspath}' ],
+            GCCDEP_FILENAME =
+                lambda target, source, env, for_signature:
+                    env.File(target[0]).Dir('depend').Dir\
+                        (
+                            re.sub
+                                (
+                                    '((?<=^)|(?<=/))\.\.(?=(/|$))',
+                                    '__',
+                                    str(env.Dir('#').rel_path(source[0].srcnode().dir))
+                                )
+                        )
+                            .File(str(target[0].name) + env.subst('$GCCDEP_SUFFIX', False, source, target)),
+            GCCDEP_FLAGS    = [ '-MD', '-MF', '$GCCDEP_FILENAME' ],
             GCCDEP_INJECTED = False
         )
     env.Append(CCFLAGS = env['GCCDEP_FLAGS'])

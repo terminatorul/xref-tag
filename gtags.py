@@ -8,7 +8,7 @@
         GTAGS([ target, ... ])
         GTAGS([ target, ... sources, ... ])
 
-    If omitted, the output tags directory is given in $GTAGSDBPATH, default '#'
+    If omitted, the output tags directory is given in $GTAGSDBPATH, default is the current source directory.
 
     The dependencies are usually other targets from your build script. Source dependencies of such targets will
     be traversed and added to the list of input files for `gtags` command.
@@ -35,7 +35,7 @@ gtags_bin = 'gtags'
 def collect_source_dependencies(target, source, env):
     """ emitter function for GTAGS() builder for listing sources of any target node included in the tags file """
 
-    ext = os.path.splitext(str(env.File(target[0]).path)) if len(target) else ''
+    ext = os.path.splitext(str(env.Dir(target[0]).path)) if len(target) else ''
 
     if ext[1] == '.b7900ba9-4778-4214-82df-bb4e13689250':
         if len(source) and ext[0] == os.path.splitext(str(env.File(source[0]).path))[0]:
@@ -46,7 +46,7 @@ def collect_source_dependencies(target, source, env):
     if not len(target):
         target.append(env['GTAGSDBPATH'])
 
-    target = [ os.path.join(target[0], tagfile) for tagfile in env['GTAGSOUTPUTS' ] ]
+    target = [ env.Dir(target[0]).File(tagfile) for tagfile in env['GTAGSOUTPUTS' ] ]
 
     if 'GTAGSCONFIGLIST' in env and 'GTAGSCONFIG' not in env:
         for tgt in target:
@@ -148,8 +148,9 @@ def generate(env, **kw):
     env.SetDefault\
         (
             GTAGS           = gtags_bin,
-
-            GTAGSDBPATH     = '#/',
+            GTAGSDBPATH     =
+                lambda target, source, env, for_signature:
+                    env.Dir('.').srcnode(),
             GTAGSFLAGS      = [ '--statistics' ],
             GTAGSSTDINFLAGS = [ '-f', '-' ],
             GTAGSCONFIGFLAG = [ '--gtagsconf' ],
