@@ -44,12 +44,12 @@ or `cflow` commands to build tag and cross-reference files for your source code:
     lib = env.SharedLibrary('octo', [ lib-src-files... ])
     exe = env.Program('succotash', [ exe-src-files... ])
 
-    ctags = env.TagsFile  ('#tags',       [ lib, exe, other sources ... ])
-    xref  = env.CScopexRef('#cscope.out', [ lib, other sources ... ])
-    flow  = env.CFlowTree (               [ exe, ... ])
-    gtags = env.GTAGS     ('#./',         [ lib, exe, src... ])
+    ctags = env.TagsFile  ('tags',       [ lib, exe, other sources ... ])
+    xref  = env.CScopexRef('cscope.out', [ lib, other sources ... ])
+    flow  = env.CFlowTree (              [ exe, ... ])
+    gtags = env.GTAGS     ('.',          [ lib, exe, src... ])
 
-    tags  = env.Alias     ('tags',        [ ctags, xref, flow, gtags ]) # use if you like Aliases
+    tags  = env.Alias     ('all-tags',   [ ctags, xref, flow, gtags ]) # use if you like Aliases
 ```
 
 ## Included tools
@@ -75,8 +75,8 @@ or `cflow` commands to build tag and cross-reference files for your source code:
     - gtags = **GTAGS**('dbpath', [ targets... ])
 
       The `dbpath` is the directory where the tag and reference files `GTAGS`, `GRTAGS`, `GPATH`
-      and `GTAGSROOT` will be generated. Optional, the default will be set to the top-level
-      `SConstruct` directory `#/`
+      and `GTAGSROOT` will be generated. Optional, the default will be set to the local
+      `SConscript` directory `Dir('.').srcnode()` at the time the environment is created.
 
       All source files used to build the given targets will be enumerated and passed to the
       `gtags` command, with all known dependency `#include`s. You can also pass source files
@@ -120,13 +120,13 @@ or `cflow` commands to build tag and cross-reference files for your source code:
 
       The `xreffile` will be generated with `cscope` command, with references to symbols in the
       source files. Passing the `xreffile` is optional, if not given the default will be
-      `#cscope.out` in the top level SConstruct source directory. An additional `namefile` will
+      `cscope.out` in the local `SConscript` directory. An additional `namefile` will
       be created in the same directory named `cscope.files` by default, holding the same list of
       files that was used to generate the `xreffile`. This file is later used by `cscope` command to
       keep the `xreffile` up-to-date next time it is needed. But in order to properly detect
       changes in `#include` lines, it is recommended to always use SConstruct to build the
       `xreffile` target again, in order to update it. Two more files, `cscope.out.in` and
-      `csope.out.po` are placed by default in the same directory, to hold an additional inverted
+      `csope.out.po` are placed in the same directory, to hold an additional inverted
       index that will speed up symbol look-ups.
 
       All source dependencies for the given `targets...` will be enumerated and passed to the
@@ -150,6 +150,11 @@ or `cflow` commands to build tag and cross-reference files for your source code:
       `cscope` to get access to the refrences for navigation while editing. If not, the `cscope`
       command works both in an interactive terminal with a Text User Interface (TUI), or in the
       good old command line mode with the `-L` and `-0` .. `-9` options.
+
+      If you split your project in subprojects, each with its own `cscope.out` file in its directory,
+      an editor like `Vim` will still be able to load them all. See [Vim support](#vim-support-function)
+      for a Vim function plus key mapping for loading `cscope.out` and `cscope.lib.out` files under
+      the current directory, which is recursively searched up to 4 levels deep by default.
 
 - '**xref-tag.ctags**'
 
@@ -179,8 +184,8 @@ or `cflow` commands to build tag and cross-reference files for your source code:
     - ctags = **TagsFile**('tags', [ target... ])
 
       `ctags` command will generate the given `tags` file with symbol definitions. The `tags`
-      file is optional, the default will be `#tags` file in the top-level SConstruct source
-      directory
+      file is optional, the default will be `tags` file in the local `SConscript` source
+      directory (at the time environment is created).
 
       All source dependencies for the given `targets...` will be enumerated and passed to
       `ctags` command for scanning and generating tags. You can also give source files as
@@ -198,8 +203,8 @@ or `cflow` commands to build tag and cross-reference files for your source code:
       After the tags file is generated, it can be used in editors / IDEs that itegrate tag
       files for navigationn while editing. The file format is text-based and rather simple,
       so there are tools that can generate and use a tags file for many languages. There is no
-      command line access to the tags in the file by default, but if you can just search it, with
-      Linux `grep` command for example, so to find the main function you can type: `grep ^main tags`.
+      command line access to the tags in the file by default, but if you can search it, with
+      Linux `grep` command for example, so to find the main function type: `grep ^main tags`.
 
 - '**xref-tag.cflow**'
 
@@ -248,14 +253,15 @@ or `cflow` commands to build tag and cross-reference files for your source code:
     Configures `gcc` and `g++` command line options in the given build environment for listing
     the complete list of `#include` file dependencies during compilation. This guarantees that
     no symbol will be missing from the generated tags, but also means that the additional dependency
-    files are loaded every time `scons` runs. This takes a significant amout of time and will no
-    longer be possible on large (enterprise) projects.
+    files are loaded every time `scons` runs. This takes some time and may become noticible on large
+    (enterprise) projects.
 
-    There are Builders exposed by `'xref-tag.gcc-dep'`. It must be loaded _after_ `gcc` and `g++`,
+    There are no Builders exposed by `'xref-tag.gcc-dep'`. It must be loaded _after_ `gcc` and `g++`,
     and will automatically inject:
 
 	- options to generate a dependecy file (`*.d`) next to the object file at compile time:
-	- loading all generated dependency files whenever `scons` runs
+	- loading previous generated dependency files whenever `scons` starts
+	- loading re-generated dependency files again after a compilation
 	- adding the dependency file to the build system so they are added to the targets to
 	  be cleaned
 
@@ -367,7 +373,21 @@ or `cflow` commands to build tag and cross-reference files for your source code:
     - `$CSCOPESYSPATH`
 	    - list of system include directories, that are not normally listed on the compiler
 	      command line or in `$CPPPATH`. Normally used together with the `-k` option to
-	      disable automatic searching of the system include directories by `cscope`
+	      disable automatic searching of the system include directories by `cscope`. To find
+	      system include directories for GNU compilers, preprocess an empty source file with
+	      the `-v` preprocessor flag. You can use `/dev/null` file and explicitly
+	      specify the source language as `c` or `c++` with the `-x` option, like this:
+	      ```
+                 gcc -E -Wp,-v -xc   /dev/null
+                 g++ -E -Wp,-v -xc++ /dev/null
+	      ```
+    - `$CSCOPEDIRECTORY`
+	    - the directory to run `cscope` in. This is significant for the resulting
+	      cross-reference file and should be the directory that you will be using `cscope`
+	      from, for example the current directory in the source editor used for
+	      code browsing. Default is the current source directory, given as
+	      `env.Dir('.').srcnode()`. The given directory name, if not an absolute path,
+	      will be relative to the local directory (current `SConscript` directory)
     - `$CSCOPESTDINFLAGS`
 	    - list of `cscope` flags to request reading list of input files from standard input.
 	      Used at build time to feed the running `cscope` process the list of input files,
@@ -638,3 +658,75 @@ or `cflow` commands to build tag and cross-reference files for your source code:
 	    - set to `True` when the tool is imported in the environment. Can be later used to check if this
 	      tool is already available in a given environment.
 
+## Vim support function
+
+If you have multiple sub-projects, each with their own cross-reference file `cscope.out`
+(and `cscope.lib.out`), you can use the bellow function with the `Vim` editor to load them all for source
+browsing while editing:
+
+```vim
+function g:LoadCScopeFiles(...)
+    if a:0 > 1
+	let l:depth_levels = a:1
+	let l:path = a:2
+	let l:cscope_file = a:3
+	let l:subdir_list = [ ]
+
+	if !l:depth_levels
+	    return
+	endif
+
+	for l:entry in globpath(l:path, '*', v:true, v:true)
+	    if isdirectory(l:entry)
+		let l:entry = substitute(substitute(l:entry, '\', '\\', '\V'), ',', '\,', '\V')
+		let l:subdir_list = add(l:subdir_list, l:entry)
+	    else
+		let l:basename = fnamemodify(l:entry, ':t')
+		if l:basename == l:cscope_file
+		    echomsg "Found cscope file: " . l:basename . " in directory " . fnamemodify(l:entry, ':h')
+		    let l:location = fnamemodify(l:entry, ':h')
+
+		    if l:location == '.'
+			execute 'cscope add ' . fnameescape(l:entry)
+		    else
+			execute 'cscope add ' . fnameescape(l:entry) . ' ' . fnameescape(fnamemodify(l:entry, ':h'))
+		    endif
+		endif
+	    endif
+	endfor
+
+	if len(l:subdir_list)
+	    call LoadCScopeFiles(l:depth_levels - 1, join(l:subdir_list, ','), l:cscope_file)
+	endif
+    else
+	if a:0
+	    let l:depth_levels = a:1
+	else
+	    let l:depth_levels = 4
+	endif
+
+	call LoadCScopeFiles(l:depth_levels, '.', 'cscope.out')
+	call LoadCScopeFiles(l:depth_levels, '.', 'cscope.lib.out')
+
+	if filereadable('../cscope.out')
+	    cscope add ../cscope.out ../
+	endif
+
+	if filereadable('../cscope.lib.out')
+	    cscope add ../cscope.lib.out ../
+	endif
+
+	redrawstatus
+	cscope show
+    endif
+endfunction
+
+command LoadCScopeFiles call g:LoadCScopeFiles()
+map <S-F5> :LoadCScopeFiles<CR>
+```
+
+Copy the function above in your `~/.vimrc` file (create one if it does not exist), change the last line
+if you want a different key shortcut then `Shift + F5`, and then use this key combination when your
+project is open, to have all the cross-reference files loaded. If you re-generate cross-reference files
+using `scons`, while the editor is still using them, remember to type `:cscope reset` in `Vim` to
+re-load them.
