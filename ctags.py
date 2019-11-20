@@ -46,6 +46,8 @@ def collect_source_dependencies(target, source, env):
         else:
             target[0] = ext[0]  # remove automatically added extension
 
+    getBool = base.BindCallArguments(base.getBool,     target, source, env, None)
+
     if not len(target):
         getString = base.BindCallArguments(base.getString, target, source, env, None)
         target.append(getString('CTAGSFILE'))
@@ -56,26 +58,48 @@ def collect_source_dependencies(target, source, env):
                 if os.path.exists(config):
                     env.Depends(tgt, config)
 
-    return base.collect_source_dependencies(target, source, env, 'CTAGSSUFFIXES')
+    keepVariantDir = getBool('CTAGSKEEPVARIANTDIR')
+    return base.collect_source_dependencies(keepVariantDir, target, source, env, 'CTAGSSUFFIXES')
 
 def run_ctags(target, source, env):
     """ action function invoked by the TagsFile() Builder to run `ctags` command """
 
+    getList     = base.BindCallArguments(base.getList,     target, source, env, False)
+    getPathList = base.BindCallArguments(base.getPathList, target, source, env, False)
+    getFile     = base.BindCallArguments(base.getString,   target, source, env, lambda x: x)
+    getBool     = base.BindCallArguments(base.getBool,     target, source, env, None)
+
+    local_dir   = target[0].cwd.srcnode()
+    variant_dir = target[0].cwd
+    ctags_dir  = variant_dir.Dir(getFile('CTAGSDIRECTORY'))
+
     command = \
-       env.Split(env['CTAGS']) + env.Split(env['CTAGSFLAGS']) + env.Split(env['CTAGSSTDINFLAGS']) + env.Split(env['CTAGSOUTPUTFLAG']) + [ str(target[0]) ]
+       env.Split(env['CTAGS']) + env.Split(env['CTAGSFLAGS']) + env.Split(env['CTAGSSTDINFLAGS']) \
+            + \
+        env.Split(env['CTAGSOUTPUTFLAG']) \
+            + \
+        [ base.translate_relative_path(str(target[0]), '.', str(ctags_dir)) ]
+
+    command[0] = base.translate_path_executable(command[0], str(variant_dir), str(ctags_dir), env)
 
     for definition in env.Split(env['CTAGSDEF']):
         command += env.Split(env['CTAGSDEFPREFIX']) + [ definition ]
 
-    print(str(command))
-    print(" ".join(base.shell_escape(command)))
+    print\
+        (
+            '(cd ' + ' '.join(base.shell_escape([ str(ctags_dir) ]))
+                + ' && ' +
+            ' '.join(base.shell_escape(command)) + ')'
+        )
 
-    ctags_process = subprocess.Popen(command, stdin = subprocess.PIPE, env = env['ENV'])
+    ctags_process = \
+        subprocess.Popen(command, stdin = subprocess.PIPE, cwd = str(ctags_dir), env = env['ENV'])
 
     # source.sort()
     for file in source:
         # print("Generating tags for source file " + str(file))
-        ctags_process.stdin.write(str(file) + "\n")
+        file_str = base.translate_relative_path(str(file), '.', str(ctags_dir))
+        ctags_process.stdin.write(file_str + "\n")
 
     ctags_process.stdin.close()
 
@@ -102,6 +126,7 @@ def generate(env, **kw):
     env.SetDefault\
         (
             CTAGS           = ctags_bin,
+            CTAGSDIRECTORY  = env.Dir('.').srcnode(),
             CTAGSFLAGS      =
                 [
                     '-h', '+.tcc.',
@@ -170,7 +195,8 @@ def generate(env, **kw):
                     '.vhdl', '.vhd',
                     '.vim',
                     '.y'
-                ]
+                ],
+            CTAGSKEEPVARIANTDIR = False
         )
 
     env['BUILDERS']['TagsFile'] = env.Builder\

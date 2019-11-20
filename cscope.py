@@ -52,6 +52,7 @@ def collect_source_dependencies(target, source, env):
     getString = base.BindCallArguments(base.getString, target, source, env, None)
     getPath   = base.BindCallArguments(base.getPath,   target, source, env, None)
     getList   = base.BindCallArguments(base.getList,   target, source, env, False)
+    getBool   = base.BindCallArguments(base.getBool,   target, source, env, None)
 
     if not len(target):
         target.append(getString('CSCOPEFILE'))
@@ -69,7 +70,9 @@ def collect_source_dependencies(target, source, env):
         if getString('CSCOPENAMEFILE') == default_namefile:
             env.SideEffect(default_namefile + '.8ebd1f37-538d-4d1b-a9f7-7fefa88581e4'. target)
 
-    return base.collect_source_dependencies(target, source, env, 'CSCOPESUFFIXES', True)
+    keepVariantDir = getBool('CSCOPEKEEPVARIANTDIR')
+
+    return base.collect_source_dependencies(keepVariantDir, target, source, env, 'CSCOPESUFFIXES', True)
 
 def run_cscope(target, source, env):
     """ action function invoked by the CScopeXRef() Builder to run `cscope` command """
@@ -79,12 +82,12 @@ def run_cscope(target, source, env):
     getFile     = base.BindCallArguments(base.getString,   target, source, env, lambda x: x)
     getBool     = base.BindCallArguments(base.getBool,     target, source, env, None)
 
-    src_dir    = target[0].cwd.srcnode()
-    cscope_dir = src_dir.Dir(getFile('CSCOPEDIRECTORY'))
+    variant_dir = target[0].cwd
+    cscope_dir  = variant_dir.Dir(getFile('CSCOPEDIRECTORY'))
 
     command = getList('CSCOPE') + getList('CSCOPEFLAGS')
 
-    command[0] = base.translate_path_executable(command[0], str(src_dir), str(cscope_dir), env)
+    command[0] = base.translate_path_executable(command[0], str(variant_dir), str(cscope_dir), env)
 
     command += \
         getList('CSCOPESTDINFLAGS') + getList('CSCOPEOUTPUTFLAG') \
@@ -94,7 +97,7 @@ def run_cscope(target, source, env):
     namefile = None
 
     if 'CSCOPENAMEFILE' in env:
-        namefile = open(str(src_dir.File(getFile('CSCOPENAMEFILE'))), 'w')
+        namefile = open(str(variant_dir.File(getFile('CSCOPENAMEFILE'))), 'w')
 
         nameFileFlags = getList('CSCOPENAMEFILEFLAGS')
 
@@ -103,38 +106,74 @@ def run_cscope(target, source, env):
                 namefile.write(arg)
                 namefile.write('\n')
 
-    for user_incdir in getPathList('CSCOPEPATH') + getPathList('CSCOPESYSPATH'):
-        basedir_list = [ src_dir ]
+    cscope_env = env['ENV']
 
-        if getBool('CSCOPEINCLUDEBUILDDIR') and target[0].cwd != src_dir \
-                and not os.path.isabs(user_incdir):
-            basedir_list.append(target[0].cwd)
+    env_var_list = getList('CSCOPESOURCEDIRSENV')
+    inc_var_list = getList('CSCOPEINCLUDEDIRSENV')
 
-        for basedir in basedir_list:
-            incdir_name = basedir.Dir(str(user_incdir))
+    for env_var in env_var_list:
+        if env_var and env_var in cscope_env and cscope_env[env_var]:
+            source_dirs = str(cscope_env[env_var]).split(os.pathsep)
 
-            for incdir in \
-                    [ incdir_name ] \
-                        + \
-                    [ repo.Dir(incdir_name) for repo in incdir_name.getRepositories() ]:
+            source_dirs = \
+                base.translate_include_path\
+                    (
+                        env, source_dirs, '.', cscope_dir, getBool('CSCOPEKEEPVARIANTDIR')
+                    )
+            cscope_env[env_var] = os.pathsep.join(source_dirs)
 
-                incdir = base.translate_relative_path(str(incdir), '.', str(cscope_dir))
-                command += getList('CSCOPEINCFLAG') + [ incdir ]
+    for inc_var in inc_var_list:
+        if inc_var and inc_var in cscope_env and cscope_env[inc_var]:
+            inc_dirs = str(cscope_env[inc_var]).split(os.pathsep)
 
-                if namefile is not None:
-                    for arg in getList('CSCOPEINCFLAG'):
-                        namefile.write(arg)
-                        namefile.write(' ')
+            inc_dirs = \
+                base.translate_include_path\
+                    (
+                        env, inc_dirs, '.', cscope_dir, getBool('CSCOPEINCLUDEVARIANTDIR')
+                    )
+            cscope_env[inc_var] = os.pathsep.join(inc_dirs)
 
-                    if re.search('[\s"]', incdir) is not None:
-                        incdir = '"' + incdir.replace('\\', '\\\\').replace('"', '\\"') + '"'
+    inc_path = \
+        base.translate_include_path\
+            (
+                env,
+                getPathList('CSCOPEPATH') + getPathList('CSCOPESYSPATH'),
+                variant_dir,
+                cscope_dir,
+                getBool('CSCOPEINCLUDEVARIANTDIR')
+            )
 
-                    namefile.write(incdir)
-                    namefile.write('\n')
+    for incdir in inc_path:
+        command += getList('CSCOPEINCFLAG') + [ incdir ]
+
+    if namefile is not None:
+        for inc_var in inc_var_list:
+            if inc_var and inc_var in cscope_env and cscope_env[inc_var]:
+                for incdir in cscope_env[inc_var].split(os.pathsep):
+                    if incdir not in inc_path:
+                        inc_path.append(incdir)
+
+        for incdir in  inc_path:
+            for arg in getList('CSCOPEINCFLAG'):
+                namefile.write(arg)
+                namefile.write(' ')
+
+            if re.search('[\s"]', incdir) is not None:
+                incdir = '"' + incdir.replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+            namefile.write(incdir)
+            namefile.write('\n')
 
     try:
+        print\
+            (
+                '(cd ' + ' '.join(base.shell_escape([ str(cscope_dir) ]))
+                        +  ' && ' + \
+                 ' '.join(base.shell_escape(command)) + ')'
+            )
+
         cscope_process = \
-            subprocess.Popen(command, stdin = subprocess.PIPE, env = env['ENV'], cwd = str(cscope_dir))
+            subprocess.Popen(command, stdin = subprocess.PIPE, env = cscope_env, cwd = str(cscope_dir))
 
         source.sort()
         for file in source:
@@ -158,8 +197,8 @@ def run_cscope(target, source, env):
         if namefile is not None:
             namefile.close()
 
-def process_source_and_target(target, source, env):
-    """ emitter function for CScopeDirXRef() builder, for listing sources of any target node included in the xref file """
+def collect_source_directories(target, source, env):
+    """ emitter function for CScopeDirXRef() builder, for listing source directories for xref file """
 
     ext = os.path.splitext(str(env.File(target[0]).path)) if len(target) else ''
 
@@ -169,8 +208,9 @@ def process_source_and_target(target, source, env):
         else:
             target[0] = ext[0]  # remove automatically added extension
 
-    getList = base.BindCallArguments(base.getList, target, source, env, False)
+    getList   = base.BindCallArguments(base.getList, target, source, env, False)
     getString = base.BindCallArguments(base.getString, target, source, env, None)
+    getBool   = base.BindCallArguments(base.getBool,     target, source, env, None)
 
     if not target:
         target.append(getString('CSCOPEFILE'))
@@ -188,9 +228,10 @@ def process_source_and_target(target, source, env):
     # if env.Dir('.').srcnode() not in source:
     #     source = [ env.Dir('.').srcnode() ] + source
 
-    env.File(target[0]).Tag('CSCOPE_DIRECTORY', os.path.abspath(str(getPath('CSCOPEDIRECTORY'))))
+    target = env.AlwaysBuild(target)
+    source = source if getBool('CSCOPEKEEPVARIANTDIR') else  [ src.srcnode() for src in source ] 
 
-    return env.AlwaysBuild(target), source
+    return target, source
 
 def run_cscope_on_dirs(target, source, env):
     """ action function invoked by the CScopeDirXRef() Builder to run `cscope` command """
@@ -198,26 +239,83 @@ def run_cscope_on_dirs(target, source, env):
     getList     = base.BindCallArguments(base.getList,     target, source, env, False)
     getPathList = base.BindCallArguments(base.getPathList, target, source, env, False)
     getString   = base.BindCallArguments(base.getString,   target, source, env, None)
+    getFile     = base.BindCallArguments(base.getString,   target, source, env, lambda x: x)
+    getBool     = base.BindCallArguments(base.getBool,     target, source, env, None)
 
-    command = getList('CSCOPE') + getList('CSCOPEFLAGS') + getList('CSCOPEOUTPUTFLAG') + [ str(target[0]) ]
+    variant_dir = target[0].cwd
+    cscope_dir  = variant_dir.Dir(getFile('CSCOPEDIRECTORY'))
 
-    for incdir in getPathList('CSCOPEPATH') + getPathList('CSCOPESYSPATH'):
+    command = getList('CSCOPE') + getList('CSCOPEFLAGS')
+
+    command[0] = base.translate_path_executable(command[0], str(variant_dir), str(cscope_dir), env)
+
+    command += \
+            getList('CSCOPEOUTPUTFLAG') \
+                + \
+            [ base.translate_relative_path(str(target[0]), '.', str(cscope_dir)) ]
+
+    inc_path = \
+        base.translate_include_path\
+            (
+                env,
+                getPathList('CSCOPEPATH') + getPathList('CSCOPESYSPATH'),
+                variant_dir,
+                cscope_dir,
+                getBool('CSCOPEINCLUDEVARIANTDIR')
+            )
+
+    for incdir in inc_path:
         command += getList('CSCOPEINCFLAG') + [ incdir ]
 
     for srcdir in source:
-        command += getList('CSCOPESOURCEDIRFLAG') + [ str(srcdir) ]
+        command += \
+                getList('CSCOPESOURCEDIRFLAG') \
+                    + \
+                [ base.translate_relative_path(str(srcdir), '.', str(cscope_dir)) ]
 
-    default_namefile = getString('CSCOPEDEFAULTNAMEFILE')
+    cscope_env = env['ENV']
+
+    env_var_list = getList('CSCOPESOURCEDIRSENV')
+    inc_var_list = getList('CSCOPEINCLUDEDIRSENV')
+
+    for env_var in env_var_list:
+        if env_var and env_var in cscope_env and cscope_env[env_var]:
+            source_dirs = str(cscope_env[env_var]).split(os.pathsep)
+
+            source_dirs = \
+                base.translate_include_path\
+                    (
+                        env, source_dirs, '.', cscope_dir, getBool('CSCOPEKEEPVARIANTDIR')
+                    )
+            cscope_env[env_var] = os.pathsep.join(source_dirs)
+
+    for inc_var in inc_var_list:
+        if inc_var and inc_var in cscope_env and cscope_env[inc_var]:
+            inc_dirs = str(cscope_env[inc_var]).split(os.pathsep)
+
+            inc_dirs = \
+                base.translate_include_path\
+                    (
+                        env, inc_dirs, '.', cscope_dir, getBool('CSCOPEINCLUDEVARIANTDIR')
+                    )
+            cscope_env[inc_var] = os.pathsep.join(inc_dirs)
+
+    default_namefile = str(cscope_dir.File(getFile('CSCOPEDEFAULTNAMEFILE')))
 
     if os.path.exists(default_namefile):
         os.rename(default_namefile, default_namefile + '.8ebd1f37-538d-4d1b-a9f7-7fefa88581e4')
 
     try:
-        print(' '.join(base.shell_escape(command)))
+        print\
+            (
+                '(cd ' + ' '.join(base.shell_escape([ str(cscope_dir) ]))
+                       +  ' && ' + \
+                ' '.join(base.shell_escape(command)) + ')'
+            )
 
-        return subprocess.Popen(command, env = env['ENV']).wait()
+        return subprocess.Popen(command, env = cscope_env, cwd = str(cscope_dir)).wait()
     finally:
-        if os.path.exists(default_namefile):
+        if os.path.exists(default_namefile + '.8ebd1f37-538d-4d1b-a9f7-7fefa88581e4'):
             os.rename(default_namefile + '.8ebd1f37-538d-4d1b-a9f7-7fefa88581e4', default_namefile)
 
 def exists(env):
@@ -240,18 +338,19 @@ def generate(env, **kw):
 
     env.SetDefault\
         (
-            CSCOPE                = cscope_bin,
-            CSCOPEQUICKFLAG       = [ '-q' ],
-            CSCOPEFLAGS           = [ '-b', '-q', '-k' ],
-            CSCOPEINCFLAG         = [ '-I' ],
-            CSCOPEPATH            = lambda target, source, env, for_signature: env['CPPPATH'],
-            CSCOPESYSPATH         = [ ],
-            CSCOPEINCLUDEBUILDDIR = False,
-            CSCOPESTDINFLAGS      = [ '-i', '-' ],
-            CSCOPEOUTPUTFLAG      = [ '-f' ],
-            CSCOPEFILE            = env.Dir('.').srcnode().File('cscope.out'),
-            CSCOPEDIRECTORY       = env.Dir('.').srcnode(),
-            CSCOPENAMEFILE        =
+            CSCOPE                  = cscope_bin,
+            CSCOPEQUICKFLAG         = [ '-q' ],
+            CSCOPEFLAGS             = [ '-b', '-q', '-k' ],
+            CSCOPEINCFLAG           = [ '-I' ],
+            CSCOPEPATH              = lambda target, source, env, for_signature: env.get('CPPPATH', [ ]),
+            CSCOPESYSPATH           = [ ],
+            CSCOPESTDINFLAGS        = [ '-i', '-' ],
+            CSCOPEOUTPUTFLAG        = [ '-f' ],
+            CSCOPEFILE              = env.File('cscope.out').srcnode(),
+            CSCOPEDIRECTORY         = env.Dir('.').srcnode(),
+            CSCOPEINCLUDEVARIANTDIR = False,
+            CSCOPEKEEPVARIANTDIR    = False,
+            CSCOPENAMEFILE          =
                 lambda target, source, env, for_signature:
                     (
                         lambda node:
@@ -286,6 +385,8 @@ def generate(env, **kw):
             CSCOPERECURSIVEFLAG   = [ '-R' ],
             CSCOPESOURCEDIRFLAG   = [ '-s' ],
             CSCOPEDEFAULTNAMEFILE = 'cscope.files',
+            CSCOPESOURCEDIRSENV   = [ 'SOURCEDIRS' ],
+            CSCOPEINCLUDEDIRSENV  = [ 'INCLUDEDIRS' ],
             CSCOPELISTINCLUDES    =
                 lambda target, source, env, for_signature:
                     [
@@ -329,14 +430,14 @@ def generate(env, **kw):
 
     env['BUILDERS']['CScopeDirXRef'] = env.Builder\
             (
-                emitter         = process_source_and_target,
+                emitter         = collect_source_directories,
                 action          = SCons.Script.Action(run_cscope_on_dirs, show_refs_generation_message),
                 multi           = True,
                 name            = 'CScopeDirXRef',
                 suffix          = '8ebd1f37-538d-4d1b-a9f7-7fefa88581e4',
                 source_factory  = SCons.Script.Dir
             )
-    #
+
     # env.AddMethod(base.test_get_generated_list)
     env['XREF_GENERATED_LIST'] = \
             lambda generator, *generator_args: base.generated_list(generator, *generator_args)

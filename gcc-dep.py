@@ -46,12 +46,12 @@ def logical_lines(physical_lines, joiner = ''.join):
 
 def XRefParseDepends(self, filename, must_exist = None, only_one = 0, existing_only = False):
     """
-        Similar to SCons environment ParseDepends() method, with the following additions:
+        Similar to the SCons environment ParseDepends() method, with the following additions:
             - filenames with spaces and tabs are properly parsed, as long as file names do not end with
               the escape character '\\', which can trigger errors.
             - a target filename with colons is properly parsed
-            - can add only explicit dependencies that exist in the file system, so if user deletes or
-              moves a header file, the build can still proceed as usual
+            - provide option to only add dependencies that exist in the file system, so if user deletes
+              or moves a header, the build can still proceed as usual
     """
     filename = self.subst(filename)
 

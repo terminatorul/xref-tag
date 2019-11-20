@@ -13,6 +13,15 @@ import os
 import re
 import SCons.Script
 
+class BindCallArguments:
+    """ Creates a path_function for Scanner's, given a callable returned by FindPathDirs() """
+    def __init__(self, baseObject, *arglist):
+        self.baseObject = baseObject
+        self.arglist = arglist
+
+    def __call__(self, *args, **kw):
+        return self.baseObject(*(self.arglist + args), **kw)
+
 class generated_list(list):
     """
         List class populated with elements using the given generator.
@@ -414,7 +423,9 @@ def getBool(target, source, env, conv, var):
     if isinstance(strVal, list):
         return not not strVal
 
-    if strVal == '' or strVal == str(False) or strVal == str(False).lower():
+    if strVal == '' or strVal == str(False) or strVal == str(False).lower() \
+                or \
+            strVal == str(None) or strVal == str(None).lower():
         return False
 
     return not not int(strVal)
@@ -543,22 +554,42 @@ def translate_path_executable(cmd, cwd, new_cwd, env):
     return cmd
 
 def translate_relative_path(path, old_cwd, new_cwd):
-    """ Translate `path` relateive to `old_cwd` into the equivalent path relative to `new_cwd` """
+    """ Translate `path` relative to `old_cwd` into the equivalent path relative to `new_cwd` """
     if os.path.isabs(path):
         return path
     else:
         return os.path.relpath(os.path.join(old_cwd, path), new_cwd)
 
-class BindCallArguments:
-    """ Creates a path_function for Scanner's, given a callable returned by FindPathDirs() """
-    def __init__(self, baseObject, *arglist):
-        self.baseObject = baseObject
-        self.arglist = arglist
+def translate_include_path(env, path_list, variant_dir, target_dir, include_variant_dir):
+    """
+        Translate path_list directories relative to variant_dir, to make them relative to target_dir.
+        Corresponding linked (source) directories for variant_dir are included in the resulting list.
+        Corresponding repository directories are included in the resulting list.
+        Directories under the variant_dir will be excluded if include_variant_dir is False
+    """
 
-    def __call__(self, *args, **kw):
-        return self.baseObject(*(self.arglist + args), **kw)
+    variant_dir = env.Dir(variant_dir)
+    local_dir   = env.Dir(variant_dir).srcnode()
+    target_dir  = env.Dir(target_dir)
 
-def collect_source_dependencies(target, source, env, suffix_list_var, readlink = False):
+    translated_path = [ ]
+
+    for user_incdir in path_list:
+        basedir_list = [ local_dir ]
+        
+        if include_variant_dir and variant_dir != local_dir and not os.path.isabs(user_incdir):
+            basedir_list.append(variant_dir)
+
+        for basedir in basedir_list:
+            incdir_name = basedir.Dir(user_incdir)
+
+            for incdir in \
+                    [ incdir_name ] + [ repo.Dir(incdir_name) for repo in incdir_name.getRepositories() ]:
+                translated_path.append(translate_relative_path(str(incdir), '.', str(target_dir)))
+
+    return translated_path
+
+def collect_source_dependencies(keepVariantDir, target, source, env, suffix_list_var, readlink = False):
     """ base emitter function for the source tagging builders, for listing sources of any target node included in the tags file """
 
     source_files = { }
@@ -612,7 +643,13 @@ def collect_source_dependencies(target, source, env, suffix_list_var, readlink =
             if bin_path in source_files:
                 del source_files[bin_path]
 
-    return target, source_files.keys()
+
+    if keepVariantDir:
+        source_list = source_files.keys()
+    else:
+        source_list = [ env.File(src).srcnode() for src in source_files ]
+
+    return target, source_list
 
 shell_metachars_re = re.compile('[' + re.escape("|&;<>()$`\\\"' \t\r\n!*?[#~%]") + ']')
 

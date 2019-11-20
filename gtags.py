@@ -43,6 +43,8 @@ def collect_source_dependencies(target, source, env):
         else:
             target[0] = ext[0]  # remove automatically added extension
 
+    getBool     = base.BindCallArguments(base.getBool,     target, source, env, None)
+
     if not len(target):
         target.append(env['GTAGSDBPATH'])
 
@@ -54,7 +56,9 @@ def collect_source_dependencies(target, source, env):
                 if os.path.exists(config):
                     env.Depends(tgt, config)
 
-    return base.collect_source_dependencies(target, source, env, 'GTAGSSUFFIXES')
+    keepVariantDir = getBool('GTAGSKEEPVARIANTDIR')
+
+    return base.collect_source_dependencies(keepVariantDir, target, source, env, 'GTAGSSUFFIXES')
 
 def run_gtags(target, source, env):
     """ action function invoked by the GTAGS() Builder to run `gtags` command """
@@ -147,18 +151,19 @@ def generate(env, **kw):
 
     env.SetDefault\
         (
-            GTAGS           = gtags_bin,
-            GTAGSDBPATH     =
+            GTAGS               = gtags_bin,
+            GTAGSDBPATH         =
                 lambda target, source, env, for_signature:
                     env.Dir('.').srcnode(),
-            GTAGSFLAGS      = [ '--statistics' ],
-            GTAGSSTDINFLAGS = [ '-f', '-' ],
-            GTAGSCONFIGFLAG = [ '--gtagsconf' ],
-            GTAGSOUTPUTFLAG = [ ],
-            GTAGSOUTPUTS    = [ 'GTAGS', 'GRTAGS', 'GPATH', 'GTAGSROOT' ],
-            GTAGSROOT       = { 'GTAGSROOT': '/' },
-            GTAGSADDENV     = { 'GTAGSFORCECPP': '1' },
-            GTAGSCONFIGLIST = [ '/usr/local/etc/gtags.conf', '/etc/gtags.conf', os.path.join(os.environ['HOME'], '.globalrc'), '/gtags.conf' ],
+            GTAGSFLAGS          = [ '--statistics' ],
+            GTAGSSTDINFLAGS     = [ '-f', '-' ],
+            GTAGSCONFIGFLAG     = [ '--gtagsconf' ],
+            GTAGSOUTPUTFLAG     = [ ],
+            GTAGSOUTPUTS        = [ 'GTAGS', 'GRTAGS', 'GPATH', 'GTAGSROOT' ],
+            GTAGSROOT           = { 'GTAGSROOT': '/' },
+            GTAGSADDENV         = { 'GTAGSFORCECPP': '1' },
+            GTAGSCONFIGLIST     = [ '/usr/local/etc/gtags.conf', '/etc/gtags.conf', os.path.join(os.environ['HOME'], '.globalrc'), '/gtags.conf' ],
+            GTAGSKEEPVARIANTDIR = False,
             GTAGSCONFIG     = \
                 [
                     'default:\\',

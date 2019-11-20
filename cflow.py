@@ -36,6 +36,8 @@ def collect_source_dependencies(target, source, env):
 
     ext = os.path.splitext(str(target[0]))
 
+    getBool     = base.BindCallArguments(base.getBool,     target, source, env, None)
+
     keys_list = env['CFLOWFORMAT'].keys()
 
     del target[0]
@@ -51,7 +53,10 @@ def collect_source_dependencies(target, source, env):
                 if os.path.exists(config):
                     env.Depends(tgt, config)
 
-    return base.collect_source_dependencies(target, source, env, 'CFLOWSUFFIXES')
+    keepVariantDir = getBool('CFLOWKEEPVARIANTDIR')
+
+    return base.collect_source_dependencies(keepVariantDir, target, source, env, 'CFLOWSUFFIXES')
+
     # source_files = { }
 
     # for node in source:
@@ -82,13 +87,30 @@ def collect_source_dependencies(target, source, env):
 def run_cflow(target, source, env):
     """ action function invoked by the CFlowTree() Builder to run `cflow` command """
 
+    getFile     = base.BindCallArguments(base.getString,   target, source, env, lambda x: x)
+    getBool     = base.BindCallArguments(base.getBool,     target, source, env, None)
+
+    variant_dir = target[0].cwd
+    cflow_dir   = variant_dir.Dir(getFile('CFLOWDIRECTORY'))
+
     command = env.Split(env['CFLOW']) + env.Split(env['CFLOWFLAGS']) + (env.subst(env.Split(env['CFLOWCPP'])) if 'CFLOWCPP' in env else [ ])
+    command[0] = base.translate_path_executable(command[0], str(variant_dir), str(cflow_dir), env)
 
     if len(env.Split(env['CFLOWCPP'])):
         for definition in env.Split(env['CFLOWSDEF']):
             command += env.Split(env['CFLOWSDEFFLAG']) + [ definition ]
 
-        for inc in env.Split(env['CFLOWPATH']):
+        inc_path = \
+            base.translate_include_path\
+                (
+                    env,
+                    env.Split(env['CFLOWPATH']),
+                    variant_dir,
+                    cflow_dir,
+                    getBool('CFLOWINCLUDEVARIANTDIR')
+                )
+
+        for inc in inc_path:
             command += env.Split(env['CFLOWPATHFLAG']) + [ inc ]
 
     for sym in env.Split(env['CFLOWSYM']):
@@ -101,14 +123,20 @@ def run_cflow(target, source, env):
 
     for nested_ext in keys_list:
         format_command = command[:]
-        format_command += env.Split(env['CFLOWFORMAT'][nested_ext]) + env.Split(env['CFLOWOUTPUTFLAG']) + [ str(target[target_index]) ]
-        format_command += [ str(src) for src in source ]
+        format_command += env.Split(env['CFLOWFORMAT'][nested_ext]) + env.Split(env['CFLOWOUTPUTFLAG']) + \
+                [ base.translate_relative_path(str(target[target_index]), '.', str(cflow_dir)) ]
+        format_command += [ base.translate_relative_path(str(src), '.', str(cflow_dir)) for src in source ]
 
         target_index = target_index + 1
 
-        print(' '.join(base.shell_escape(format_command)))
+        print\
+            (
+                '(cd ' + ' '.join(base.shell_escape([ str(cflow_dir) ]))
+                        + ' && ' +
+                ' '.join(base.shell_escape(format_command))
+            )
 
-        cflow_process = subprocess.check_output(format_command, env = env['ENV'])
+        cflow_process = subprocess.check_output(format_command, cwd = str(cflow_dir), env = env['ENV'])
 
 def exists(env):
     """ Check if `cflow` tool is imported in the environment """
@@ -129,17 +157,20 @@ def generate(env, **kw):
 
     env.SetDefault\
         (
-            CFLOW           = cflow_bin,
-            CFLOWOUTPUTFLAG = [ '--output' ],
-            CFLOWFLAGS      = [ '--all', '--omit-symbol-name' ],
-            CFLOWCONFIG     = [ os.path.join(os.environ['HOME'], '.cflowrc') ],
-            CFLOWPATHFLAG   = [ '-I' ],
-            CFLOWPATH       = [ ],
-            CFLOWDEFFLAG    = [ '-D' ],
-            CFLOWDEF        = [ ],
-            CFLOWFORMAT     = { '': [ ], '.reverse': [ '--reverse' ], '.xref': [ '--xref' ] },
-            CFLOWSYMFLAG    = [ '--symbol' ],
-            CFLOWSYM        =
+            CFLOW               = cflow_bin,
+            CFLOWDIRECTORY      = env.Dir('.').srcnode(),
+            CFLOWOUTPUTFLAG     = [ '--output' ],
+            CFLOWFLAGS          = [ '--all', '--omit-symbol-name' ],
+            CFLOWCONFIG         = [ os.path.join(os.environ['HOME'], '.cflowrc') ],
+            CFLOWPATHFLAG       = [ '-I' ],
+            CFLOWPATH           = [ ],
+            CFLOWDEFFLAG        = [ '-D' ],
+            CFLOWDEF            = [ ],
+            CFLOWFORMAT         = { '': [ ], '.reverse': [ '--reverse' ], '.xref': [ '--xref' ] },
+            CFLOWSYMFLAG        = [ '--symbol' ],
+            CFLOWKEEPVARIANTDIR = False,
+            CFLOWINCLUDEVARIANTDIR = False,
+            CFLOWSYM            =
                 [
                     '__inline:=inline',
                     '__inline__:=inline',
@@ -150,10 +181,21 @@ def generate(env, **kw):
                     '__restrict:=',
                     '__extension__:qualifier',
                     '__attribute__:wrapper',
+                    '__packed:wrapper',
+                    '__BEGIN_DECLS:wrapper',
+                    '__END_DECLS:wrapper',
+                    '__END_NAMESPACE_STD:wrapper',
+                    '__BEGIN_NAMESPACE_STD:wrapper',
+                    '__END_NAMESPACE_STD:wrapper',
+                    '__USING_NAMESPACE_STD:wrapper',
+                    '__THROW:wrapper',
+                    '__REDIRECT:wrapper',
                     '__asm__:wrapper',
                     '__nonnull:wrapper',
                     '__nonnull__:wrapper',
                     '__wur:wrapper',
+                    '__warnattr:wrapper',
+                    '__fortify_function:wrapper',
                     '__nonnull__:wrapper',
                     '__artificial__:qualifier',
                     '__leaf__:qualifier',
@@ -162,12 +204,12 @@ def generate(env, **kw):
                     '__pure__:qualifier',
                     '__asm__:qualifier'
                 ],
-            CFLOWSUFFIXES   =
+            CFLOWSUFFIXES       =
                 [
                     '.c', '.y',
                     '','.c++', '.cc', '.cp', '.cpp', '.cxx', '.h', '.h++', '.hh', '.hp', '.hpp', '.hxx', '.C', '.H', '.tcc'
                 ],
-            CFLOWCPP        = [ ]
+            CFLOWCPP            = [ ]
         )
 
     env['BUILDERS']['CFlowTree'] = env.Builder\
