@@ -2,9 +2,9 @@
 
 SConstruct Tools and Builders for generating tag and cross-reference files on Linux for C and C++.
 
-A tag here is the file position where a symbol in the source code (a function, class, variable,
-...) is defined. A cross-reference or reference list is the set of file positions where a symbol
-is referenced (used), for example all locations where a given function is called.
+A "tag" here is the file position where a symbol (a function, class, variable, ...) is defined in
+the source code. A cross-reference or reference list is the set of file positions where a symbol
+is referenced (used), for example all locations where a function is called.
 
 ## Installation
 
@@ -41,18 +41,20 @@ now available to create new targets in your build script that will run `ctags`, 
 or `cflow` commands to build tag and cross-reference files for your source code:
 
 ```python
-    lib = env.SharedLibrary('octo', [ lib-src-files... ])
-    exe = env.Program('succotash', [ exe-src-files... ])
+    lib   = env.SharedLibrary('octo', [ lib-src-files... ])
+    exe   = env.Program('succotash', [ exe-src-files... ])
 
-    ctags = env.TagsFile  ('tags',       [ lib, exe, other sources ... ])
-    xref  = env.CScopeXRef('cscope.out', [ lib, other sources ... ])
-    flow  = env.CFlowTree (              [ exe, ... ])
-    gtags = env.GTAGS     ('.',          [ lib, exe, src... ])
+    ctags = env.TagsFile   ('tags',       [ lib, exe, other sources ... ])
+    xref  = env.CScopeXRef ('cscope.out', [ lib, other sources ... ])
+    flow  = env.CFlowTree  (              [ exe, ... ])
+    gtags = env.GTAGS      ('.',          [ lib, exe, src... ])
+
+    ccdb  = CompileCommands('compile_commands.json', [ lib, exe, ... ])
 
     tags  = env.Alias     ('all-tags',   [ ctags, xref, flow, gtags ])
 ```
 
-These Builds and Tools were written for SCons version 3.1.1.
+These Builds and Tools were tested SCons version 3.1.1.
 
 ## Included tools
 - '**xref-tag.gtags**'
@@ -273,6 +275,34 @@ These Builds and Tools were written for SCons version 3.1.1.
 
        After generating the call graph, it can be immediately inspected as it is a text file
        with proper indentation and possibly showing an ASCII tree if the options are included.
+
+- '**xref-tag.cccom**'
+
+    Write a JSON Compilation Database file (C/C++ compile commands), as specified in:
+	- https://clang.llvm.org/docs/JSONCompilationDatabase.html
+
+    This file is a listing with the compilation command line of each translation unit for a target binary.
+    It is meant as input for code parsing tools that need access to compilation options, like include
+    directories and macro definitions, for each source file to ensure accurate scanning.
+
+    Presumably, this file can be used for running `clang-ctags` command to scan your project with
+    clang and generate a tags file and a cross-reference file.
+
+    Builder:
+     - ccdb = **CompileCommands**('compile_commands.json', [ targets... ])
+
+    The `[ target... ]` list, which gives sources to this builder, contains other executables
+    and libraries built in the same project. Source files for this binaries will be included in the
+    generated compile commands. Only `C` and `C++` sources are listed by default. The generated
+    file name is optional, if missing and the default value `compile_commands.json` will be used.
+
+    `CompilationDatabase()` is an alias for `CompileCommands()`.
+
+    When using [VariantDir()](https://scons.org/doc/production/HTML/scons-man.html#f-VariantDir),
+    the generated compilation commands will be altered so compilation
+    appears to take place in the local `SConscript` directory instead of the variant directory. In
+    this way code parsing tools do not need to deal with the build directory. If you want to
+    disable this and keep build commands accurate, set `CCCOM_KEEP_VARIANT_DIR` to `True`.
 
 - '**xref-tag.gcc-dep**'
 
@@ -639,6 +669,60 @@ These Builds and Tools were written for SCons version 3.1.1.
                      '','.c++', '.cc', '.cp', '.cpp', '.cxx', '.h', '.h++', '.hh', '.hp', '.hpp', '.hxx', '.C', '.H'
                  ]
 	      ```
+
+- '**xref-tag.cccom**'
+
+    - `$CCCOM_OBJPREFIX`, `$CCCOM_OBJSUFFIX`, `$CCCOM_SHOBJPREFIX`, `$CCCOM_SHOBJSUFFIX`
+	    - suffixes and prefixes used to identify static and shared object dependencies for the  binary
+	      targets. The defaults are the platform-provided variables `$OBJPREFIX`, `$OBJSUFFIX`,
+	      `$SHOBJPREFIX`, `$SHOBJSUFFIX`.
+
+    - `$CCCOM_SUFFIXES`
+	    - List with suffixes of source files to be included in the generated commands list. Default is
+	      the `C` and `C++` extensions list odocumented by `SCons` for the `cc` and `cxx` tools:
+
+	      ```python
+                 [ '.c', '.m', '.C', '.cc', '.cpp', '.cxx', '.c++', '.C++', '.mm' ]
+	      ```
+
+    - `CCCOM_COMMANDVAR`
+	    - Strings to be expanded for each type of source file, in order to re-create the static object
+	      compilation command. These are given as a list of mappings from a file suffix (extension) to the
+	      string:
+
+	      ```python
+                 [
+                    { '.c':   '$CCCOM'  }, { '.m':   '$CCCOM'  },
+                    { '.C':   '$CXXCOM' }, { '.cc':  '$CXXCOM' }, { '.cpp': '$CXXCOM' },
+                    { '.cxx': '$CXXCOM' }, { '.c++': '$CXXCOM' }, { '.C++': '$CXXCOM' },
+                    { '.mm':  '$CXXCOM' }
+                 ]
+	      ```
+            The default value above matches `SCons` documentation for `C` and `C++` builder file extensions,
+            and the command string environment variables.
+
+    - `CCCOM_SHCOMMANDVAR`
+	    - Strings to be expanded for each type of source file, in order to re-create the shared object
+	      compilation command. These are given as a list of mappings from a file suffix (extension) to the
+	      string:
+	      ```python
+                 [
+                     { '.c':   '$SHCCCOM'  }, { '.m':   '$SHCCCOM'  },
+                     { '.C':   '$SHCXXCOM' }, { '.cc':  '$SHCXXCOM' }, { '.cpp': '$SHCXXCOM' },
+                     { '.cxx': '$SHCXXCOM' }, { '.c++': '$SHCXXCOM' }, { '.C++': '$SHCXXCOM' },
+                     { '.mm':  '$SHCXXCOM' }
+                 ]
+	      ```
+            The default value above matches `SCons` documentation for `C` and `C++` builder file extensions,
+            and the command string environment variables.
+    - `CCCOM_DATABASE_FILE`
+	    - Default file name for the compilation database, if not specified when the builder is called.
+	      Default value is `compile_commands.json`.
+
+    - `CCCOM_KEEP_VARIANT_DIR`
+	    - Used to prevent translation of the compilation directory from the
+	      [VariantDir()](https://scons.org/doc/production/HTML/scons-man.html#f-VariantDir) build directory
+	      to the local `SConscript` directory. Default `False`.
 
 - '**xref-tag.gcc-dep**'
 

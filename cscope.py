@@ -35,9 +35,6 @@ import subprocess
 import SCons.Script
 import source_browse_base as base
 
-""" default name for `cscope` executable command """
-cscope_bin = 'cscope'
-
 def collect_source_dependencies(target, source, env):
     """ emitter function for CScopeXRef() builder, for listing sources of any target node included in the xref file """
 
@@ -338,7 +335,7 @@ def generate(env, **kw):
 
     env.SetDefault\
         (
-            CSCOPE                  = cscope_bin,
+            CSCOPE                  = [ 'cscope' ],
             CSCOPEQUICKFLAG         = [ '-q' ],
             CSCOPEFLAGS             = [ '-b', '-q', '-k' ],
             CSCOPEINCFLAG           = [ '-I' ],
