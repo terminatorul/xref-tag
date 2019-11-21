@@ -42,7 +42,7 @@ or `cflow` commands to build tag and cross-reference files for your source code:
 
 ```python
     lib   = env.SharedLibrary('octo', [ lib-src-files... ])
-    exe   = env.Program('succotash', [ exe-src-files... ])
+    exe   = env.Program('succotash',  [ exe-src-files... ])
 
     ctags = env.TagsFile   ('tags',       [ lib, exe, other sources ... ])
     xref  = env.CScopeXRef ('cscope.out', [ lib, other sources ... ])
@@ -51,7 +51,7 @@ or `cflow` commands to build tag and cross-reference files for your source code:
 
     ccdb  = CompileCommands('compile_commands.json', [ lib, exe, ... ])
 
-    tags  = env.Alias     ('all-tags',   [ ctags, xref, flow, gtags ])
+    tags  = env.Alias     ('all-tags',    [ ctags, xref, flow, gtags ])
 ```
 
 These Builds and Tools were tested SCons version 3.1.1.
@@ -285,8 +285,8 @@ These Builds and Tools were tested SCons version 3.1.1.
     It is meant as input for code parsing tools that need access to compilation options, like include
     directories and macro definitions, for each source file to ensure accurate scanning.
 
-    Presumably, this file can be used for running `clang-ctags` command to scan your project with
-    clang and generate a tags file and a cross-reference file.
+    The intent is to use this file for running [clang-tags](https://github.com/ffevotte/clang-tags)
+    command to scan your project with clang and generate both tags and a cross-references.
 
     Builder:
      - ccdb = **CompileCommands**('compile_commands.json', [ targets... ])
