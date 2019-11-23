@@ -101,10 +101,15 @@ These Builds and Tools were tested SCons version 3.1.1.
       If you use `gtags-cscope`, beware it will try to update the resulting tag and reference
       files automatically before use, but without the same options on the command line that
       SCons is using. This means you should have a `gtags.conf` or `~/.globalrc` file with the same
-      configuration as provided by SCons, or else the C++ system headers for example with
-      no extension (like `<iostream>`) will be considered plain text files, and no C++ symbol
-      defintions or references will be visible. Or you can always use `-d` option on
-      `gtags-cscope` command line, to disable the automatic update of the reference files.
+      configuration as provided by SCons (see GTAGSCONFIG below in [Tool Variables](#tool-variables)).
+      Otherwise, C++ system headers with no extension (like `<iostream>`) will be
+      considered plain text files, and no C++ symbol defintions or references will be visible.
+      Or you can always use `-d` option on `gtags-cscope` command line, to disable the automatic
+      update of the reference files.
+
+      To use the cross-reference in [Vim](https://www.vim.org/), you can use command `:set cscopeprg=gtags-cscope\ -d`,
+      see [cscopeprg](https://vimhelp.org/if_cscop.txt.html#cscopeprg) option in Vim
+      [cscope interface](https://vimhelp.org/if_cscop.txt.html).
 
 - '**xref-tag.cscope**'
 
@@ -151,14 +156,17 @@ These Builds and Tools were tested SCons version 3.1.1.
       After the cross-reference fils is generated, you can use `cscope` command in the same
       directory to find symbols from the source files and their uses in the given targets.
       `cscope` command will update the cross-reference file before usbefore use. But if you
-      move things around in your project and change the include directories, `cscope` will not
-      know about it untill your regenerate the `xref-file` with SCons. Some editors integrate with
-      `cscope` to get access to the refrences for navigation while editing. The `cscope`
-      command works both in an interactive terminal with a Text User Interface (TUI), or in the
-      good old command line mode with the `-L` and `-0` .. `-9` options.
+      move things around in your project and change the include directories, or you add new source
+      files, `cscope` will not know about it untill your regenerate the `xref-file` with SCons. Some
+      editors integrate with `cscope` to get access to the refrences for navigation while editing.
+      For [Vim](https://www.vim.org) integration see [cscope interface](https://vimhelp.org/if_cscop.txt.html)
+      and [Vim/Cscope tutorial](http://cscope.sourceforge.net/cscope_vim_tutorial.html).
+
+      The `cscope` command works both in an interactive terminal with a Text
+      User Interface (TUI), or in the good old command line mode with the `-L` and `-0` .. `-9` options.
 
       If you split your project into subprojects with their own `cscope.out` files, an editor like
-      `Vim` will still be able to load them all. See [Vim support](#vim-support-function)
+      `Vim` will be able to load them all. See [Vim support](#vim-support-function) section below
       for a Vim function and key mapping for loading `cscope.out` and `cscope.lib.out` files found
       under the current directory (up to 4 levels deep by default).
 
@@ -230,10 +238,21 @@ These Builds and Tools were tested SCons version 3.1.1.
 
       After the `tag` file is generated, it can be used in editors / IDEs that integrate tag
       files for navigationn while editing. The file format is text-based and rather simple,
-      so there are tools that can generate and use a `tag` file for many languages. You can
-      open the location of a tag using Linux `less` command in a terminal, with `-t` argument
-      for the tag to locate, and `-T` for the tag file if non-default. Use `t` and `T` keys
-      with `less` to navigate to the next and previous tag locations.
+      so there are tools that can generate and use a `tag` file for many languages. For
+      [Vim](https://www.vim.org) integration see [Moving through programs](https://vimhelp.org/usr_29.txt.html#usr_29.txt)
+      and [Tags and special searches](https://vimhelp.org/tagsrch.txt.html) in the documentation.
+
+      On the command line you can open the location of a tag using Linux `less` command in a
+      terminal, with `-t` argument for the tag to locate, and `-T` for the tag file if
+      non-default. Use `t` and `T` keys with `less` to navigate to the next and previous tag
+      locations.
+
+      If you split your project into subprojects with their own `tags` file, [Vim](https://www.vim.org)
+      will be able to load all the tag files by setting the '[tags](https://vimhelp.org/tagsrch.txt.html#tags-option)'
+      option. '[tagrelative](https://vimhelp.org/tagsrch.txt.html#tagrelative-option)' option
+      should also be set, unless you build all tag files from the same directory. See
+      [Vim support](#vim-support) section below for a function to search and load all tag
+      files under the current directory up to 4 levels deep by default.
 
 - '**xref-tag.cflow**'
 
@@ -278,7 +297,7 @@ These Builds and Tools were tested SCons version 3.1.1.
 
 - '**xref-tag.cccom**'
 
-    Write a JSON Compilation Database file (C/C++ compile commands), as specified in:
+    Write a JSON Compilation Database file (with `C`/`C++` compile commands), as specified in:
 	- https://clang.llvm.org/docs/JSONCompilationDatabase.html
 
     This file is a listing with the compilation command line of each translation unit for a target binary.
@@ -769,9 +788,92 @@ These Builds and Tools were tested SCons version 3.1.1.
 
 ## Vim support function
 
-If you have multiple sub-projects with their own cross-reference file `cscope.out`
-(and `cscope.lib.out`), you can use the bellow function with the `Vim` editor to load them all for source
-browsing while editing:
+If you have multiple sub-projects with their own tag files `tags` (and `lib.tags`) and cross-reference files
+`cscope.out` (and `cscope.lib.out`), you can use the below function with the `Vim` editor to load them all
+for source browsing while editing:
+
+Load tag files function:
+```vim
+function g:LoadTagFiles(...)
+    if a:0 > 1
+	let l:depth_levels = a:1
+	let l:path = a:2
+	let l:tag_file = a:3
+	let l:subdir_list = [ ]
+
+	if !l:depth_levels
+	    return
+	endif
+
+	let l:tagfile_found = v:false
+
+	for l:entry in globpath(l:path, '*', v:true, v:true)
+	    if isdirectory(l:entry)
+		let l:entry_basename = fnamemodify(l:entry, ':t')
+
+		if l:entry_basename != '.git'
+		    let l:entry = substitute(substitute(l:entry, '\', '\\', '\V'), ',', '\,', '\V')
+		    let l:subdir_list = add(l:subdir_list, l:entry)
+		endif
+	    else
+		let l:basename = fnamemodify(l:entry, ':t')
+		if l:basename == l:tag_file
+		    " echomsg "Found tag file: " . l:basename . " in directory " . fnamemodify(l:entry, ':h')
+		    let l:location = fnamemodify(l:entry, ':h')
+
+		    execute 'set tags-=' . substitute(fnameescape(l:entry), '\v^\.\/', '', '')
+		    execute 'set tags+=' . substitute(fnameescape(l:entry), '\v^\.\/', '', '')
+
+		    let l:tagfile_found = v:true
+		endif
+	    endif
+	endfor
+
+	if len(l:subdir_list)
+	    call LoadTagFiles(l:depth_levels - 1, join(l:subdir_list, ','), l:tag_file)
+	endif
+    else
+	if a:0
+	    let l:depth_levels = a:1
+	else
+	    let l:depth_levels = 4
+	endif
+
+	for tagname in [ 'lib.tags', 'tags' ]
+	    for updir in [ './../../../../', './../../../', './../../', './../', './' ]
+		execute 'set tags-=' . updir . tagname
+		execute 'set tags^=' . updir . tagname
+	    endfor
+	endfor
+
+	call LoadTagFiles(l:depth_levels, '.', 'tags')
+
+	if exists('+tagrelative') && &tagrelative
+	    if filereadable('../tags')
+		set tags+=../tags
+	    endif
+	endif
+
+	call LoadTagFiles(l:depth_levels, '.', 'lib.tags')
+
+	if exists('+tagrelative') && &tagrelative
+	    if filereadable('../lib.tags')
+		set tags+=../lib.tags
+	    endif
+	endif
+
+	for tagfile in split(&tags, ',')
+	    echomsg('tag: ' . tagfile)
+	endfor
+
+	set tagrelative?
+    endif
+endfunction
+
+command LoadTagFiles    call g:LoadTagFiles()
+```
+
+Load cross-reference files function:
 
 ```vim
 function g:LoadCScopeFiles(...)
@@ -831,10 +933,16 @@ function g:LoadCScopeFiles(...)
 endfunction
 
 command LoadCScopeFiles call g:LoadCScopeFiles()
-map <S-F5> :LoadCScopeFiles<CR>
+```
+Key mapping to load tag and xref files, and set the '[tagrelative](https://vimhelp.org/tagsrch.txt.html#tagrelative-option)'
+option:
+
+```vim
+map <S-F5> :set tagrelative <Bar> execute 'LoadCScopeFiles' <Bar> execute 'LoadTagFiles'<CR>
 ```
 
-Copy the function above in your `~/.vimrc` file (create one if needed), change the last line
+Copy the functions above in your `~/.vimrc` file (create one if needed), change the last line
 if you want a different key shortcut then `Shift + F5`, and use the shortcut in `Vim` when your
-project is open, to load all cross-reference files. If you re-generate the cross-reference
-using `scons`, while `Vim` is still using them, remember to type `:cscope reset` to re-load them.
+project is open, usually in the top project directory, to load all cross-reference and tag
+files. If you re-generate the cross-reference using `scons`, while `Vim` is still using them,
+remember to type `:cscope reset` to re-load them.
