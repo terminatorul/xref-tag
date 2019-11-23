@@ -42,7 +42,7 @@ or `cflow` commands to build tag and cross-reference files for your source code:
 
 ```python
     lib   = env.SharedLibrary('octo', [ lib-src-files... ])
-    exe   = env.Program('succotash', [ exe-src-files... ])
+    exe   = env.Program('succotash',  [ exe-src-files... ])
 
     ctags = env.TagsFile   ('tags',       [ lib, exe, other sources ... ])
     xref  = env.CScopeXRef ('cscope.out', [ lib, other sources ... ])
@@ -51,7 +51,7 @@ or `cflow` commands to build tag and cross-reference files for your source code:
 
     ccdb  = CompileCommands('compile_commands.json', [ lib, exe, ... ])
 
-    tags  = env.Alias     ('all-tags',   [ ctags, xref, flow, gtags ])
+    tags  = env.Alias     ('all-tags',    [ ctags, xref, flow, gtags ])
 ```
 
 These Builds and Tools were tested SCons version 3.1.1.
@@ -304,8 +304,20 @@ These Builds and Tools were tested SCons version 3.1.1.
     It is meant as input for code parsing tools that need access to compilation options, like include
     directories and macro definitions, for each source file to ensure accurate scanning.
 
-    Presumably, this file can be used for running `clang-ctags` command to scan your project with
-    clang and generate a tags file and a cross-reference file.
+    The intent is to use this file for running [RTags](https://github.com/Andersbakken/rtags) or
+    [clang-tags](https://github.com/ffevotte/clang-tags) commands, to scan your project with clang
+    and generate both tags and a cross-references.
+
+    Beware that your project must compile successfully with `clang` compiler in this case. Even if
+    clang is only parsing the sources, errors may still stop it from completing the parse. If you compile
+    [RTags](https://github.com/Andersbakken/rtags) or [clang-tags](https://github.com/ffevotte/clang-tags)
+    from sources, which is the current installation procedure, you should use a newer version of
+    `libclang` like `6.0`. You should have the system include directories in `CFLAGS` and
+    `CXXFLAGS` construction vairables (introduced with `-isystem` flag), and also add `clang`
+    command line option `-ferror-limit=0` to the resulting JSON compilation database, so `clang`
+    will continue parsing after any number of errors. If using [RTags](https://github.com/Andersbakken/rtags),
+    it already adds `-ferror-limit=50` and offers an option to query the compiler for system include
+    directories.
 
     Builder:
      - ccdb = **CompileCommands**('compile_commands.json', [ targets... ])
@@ -320,7 +332,7 @@ These Builds and Tools were tested SCons version 3.1.1.
     When using [VariantDir()](https://scons.org/doc/production/HTML/scons-man.html#f-VariantDir),
     the generated compilation commands will be altered so compilation
     appears to take place in the local `SConscript` directory instead of the variant directory. In
-    this way code parsing tools do not need to deal with the build directory. If you want to
+    this way code parsing tools do not need to deal with SCons build directory. If you want to
     disable this and keep build commands accurate, set `CCCOM_KEEP_VARIANT_DIR` to `True`.
 
 - '**xref-tag.gcc-dep**'
