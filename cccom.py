@@ -61,7 +61,7 @@ def build_suffix_map(target, source, env):
 def get_build_command(obj_ixes, suffix_map, target, source, env):
     """
         retrieve approperiate variable to expand, based on source and target file name conventions
-        (source file language, target object file type
+        (source file language, target object file type)
     """
     basename = os.path.split(target.get_path())[1]
 
@@ -87,7 +87,7 @@ def write_compile_commands(target, source, env):
     """
     getString = base.BindCallArguments(base.getString, target, source, env, None)
     getList   = base.BindCallArguments(base.getList,   target, source, env, False)
-    getBool   = base.BindCallArguments(base.getBool,   target, source, env, None)
+    getBool   = base.BindCallArguments(base.getBool,   target, source, env, lambda x: x)
 
     obj_ixes = \
         map(getString, [ 'CCCOM_OBJPREFIX',  'CCCOM_OBJSUFFIX', 'CCCOM_SHOBJPREFIX', 'CCCOM_SHOBJSUFFIX' ])
@@ -110,11 +110,44 @@ def write_compile_commands(target, source, env):
             if is_object_file(child, obj_ixes):
                 for child_src in child.sources:
                     if is_cc_source(child_src, cc_suffixes):
-                        build_env = child.get_build_env()
+                        build_env = child.get_build_env().Clone()
 
-                        if not keep_variant_dir:
-                            build_env = build_env.Clone()
-                            build_env.fs.chdir(build_env.fs.getcwd().srcnode())
+                        build_targets = [ child ] + child.alter_targets()[0]
+
+                        if keep_variant_dir:
+                            build_sources = child.sources
+                        else:
+                            build_sources = [ obj_src.srcnode() for obj_src in child.sources ]
+
+                        append_flags = getList('CCCOM_APPEND_FLAGS')
+                        filter_flags = getList('CCCOM_REMOVE_FLAGS')
+                        abs_file_path = getBool('CCCOM_ABSOLUTE_FILE')
+
+                        if not keep_variant_dir or append_flags or filter_flags or 'CCCOM_FILTER_FUNC' in env:
+                            for flag_set in append_flags:
+                                for var_name in flag_set:
+                                    if var_name in build_env:
+                                        if not isinstance(build_env[var_name], list):
+                                            build_env[var_name] = build_env.Split(build_env[var_name])
+                                        build_env[var_name] = build_env[var_name] + flag_set[var_name]
+                                    else:
+                                        build_env[var_name] = flag_set[var_name]
+
+                            for filter_set in filter_flags:
+                                for var_name in filter_set:
+                                    if var_name in build_env:
+                                        for val in env.Split(filter_set[var_name]):
+                                            if val in build_env[var_name]:
+                                                if val in build_env[var_name]:
+                                                    build_env[var_name] = build_env.Split(build_env[var_name])[:]
+                                                    build_env[var_name].remove(val)
+
+                            if 'CCCOM_FILTER_FUNC' in env:
+                                build_env['CCCOM_FILTER_FUNC'] = env['CCCOM_FILTER_FUNC']
+                                build_env['CCCOM_ENV'] = env
+                                val = base.getBool(build_targets, build_sources, build_env, lambda x: x, 'CCCOM_FILTER_FUNC')
+                                if not val:
+                                    continue
 
                         if has_previous_unit:
                             db_file.append('    },')
@@ -124,18 +157,38 @@ def write_compile_commands(target, source, env):
                         db_file.extend\
                             ([
             '    {',
-            '        "directory": ' + json_escape_string(build_env.fs.getcwd().get_abspath()) + ',',
-            '        "file":      ' + json_escape_string(child_src.srcnode().get_path()) + ',',
+            '        "directory": ' + json_escape_string(build_env.fs.getcwd().get_abspath()) + ','
+                            ])
+
+                        if keep_variant_dir:
+                            src_file = child_src
+                        else:
+                            src_file = child_src.srcnode()
+
+                        if abs_file_path:
+                            src_file = src_file.get_abspath()
+                        else:
+                            src_file = src_file.get_path()
+
+                        db_file.extend\
+                            ([
+            '        "file":      ' + json_escape_string(src_file) + ',',
             '        "command":   '
                     +
-                json_escape_string(build_env.subst\
+                json_escape_string\
+                    (
+                        build_env.subst\
                         (
                             get_build_command(obj_ixes, suffix_map, child, child_src, build_env),
                             False,
-                            [ child ] + child.alter_targets()[0],
-                            [ obj_src.srcnode() for obj_src in child.sources ],
+                            build_targets,
+                            build_sources,
                             None
-                        ))
+                        )
+                    ) + ',',
+            '        "output":    '
+                    +
+                json_escape_string(env.subst('$TARGET', False, build_targets, build_sources))
                             ])
             child = nodeWalker.get_next()
 
@@ -208,7 +261,11 @@ def generate(env, **kw):
                         { '.mm':  '$SHCXXCOM' }
                     ],
             CCCOM_DATABASE_FILE    = 'compile_commands.json',
-            CCCOM_KEEP_VARIANT_DIR = False
+            CCCOM_KEEP_VARIANT_DIR = False,
+            CCCOM_APPEND_FLAGS     = [ ],
+            CCCOM_REMOVE_FLAGS     = [ ],
+            # CCCOM_FILTER_FUNC      = lambda target, source, env, for_signature: True
+            CCCOM_ABSOLUTE_FILE    = False
         )
 
     env.AddMethod(JSONCompilationDatabase, 'CompileCommands')

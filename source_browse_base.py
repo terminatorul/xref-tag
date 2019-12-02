@@ -412,7 +412,7 @@ def getPathList(target, source, env, for_signature, var):
     return [ str(env.Dir(path)) for path in getList(target, source, env, for_signature, var) ]
 
 def getString(target, source, env, conv, var):
-    return env.subst(env[var](target, source, env, False) if callable(env[var]) else env[var], False, target, source) if var in env else ''
+    return env.subst(env[var](target, source, env, False) if callable(env[var]) else env[var], True, target, source, conv) if var in env else ''
 
 def getPath(target, source, env, conv, var):
     return str(env.Dir(getString(target, source, env, conv, var)))

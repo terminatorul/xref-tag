@@ -59,13 +59,14 @@ These Builds and Tools were tested SCons version 3.1.1.
 ## Included tools
 - '**xref-tag.gtags**'
 
-  Configures the build environment with variables to run `gtags` command, from GNU GLOBAL
+  Configures the build environment with variables to run
+  [`gtags`](https://www.gnu.org/software/global/globaldoc_toc.html#gtags) command, from GNU GLOBAL
   source code tagging system, available from https://www.gnu.org/software/global/ and from most
   Linux distributions.
 
   Ex. installation for Ubuntu Linux: `apt install global`
 
-  By default GNU GLOBAL 6.6.3 is expected.
+  Tested with GNU GLOBAL 6.6.3.
 
   GNU global this is the most recently developed of the code browsing commands supported. It only
   supports parsing files inside the current project directory. To allow indexing of any sources
@@ -94,22 +95,29 @@ These Builds and Tools were tested SCons version 3.1.1.
       after the first build, and after `#include` line changes in a source file, see [ParseDepends()](https://scons.org/doc/production/HTML/scons-user.html#idm1236)
       function in SCons user manual.
 
-      After the tag and reference files are generated, you can use `global` or `gtags-cscope`
+      After tag and reference files are generated, you can use
+      [`global`](https://www.gnu.org/software/global/globaldoc_toc.html#global) or
+      [`gtags-cscope`](https://www.gnu.org/software/global/globaldoc_toc.html#gtags_002dcscope)
       commands to query for symbol definition or uses, or integrate with an editor (like gVim)
       or IDE for this purpose.
 
-      If you use `gtags-cscope`, beware it will try to update the resulting tag and reference
-      files automatically before use, but without the same options on the command line that
-      SCons is using. This means you should have a `gtags.conf` or `~/.globalrc` file with the same
-      configuration as provided by SCons (see GTAGSCONFIG below in [Tool Variables](#tool-variables)).
-      Otherwise, C++ system headers with no extension (like `<iostream>`) will be
-      considered plain text files, and no C++ symbol defintions or references will be visible.
-      Or you can always use `-d` option on `gtags-cscope` command line, to disable the automatic
-      update of the reference files.
+      If you use [`gtags-cscope`](https://www.gnu.org/software/global/globaldoc_toc.html#gtags_002dcscope),
+      beware it will try to update the resulting tag and reference files automatically,
+      but without the same options on the command line that SCons is using. This means you should
+      have a `gtags.conf` or `~/.globalrc` file with the same configuration provided by SCons
+      (see GTAGSCONFIG below in [Tool Variables](#tool-variables)). Otherwise, C++ system headers
+      with no extension (like `<iostream>`) will be re-considered plain text files, and no C++ symbols
+      will be visible. Or you can always use `-d` option on `gtags-cscope` command line, to disable the
+      automatic update of the reference files.
 
-      To use the cross-reference in [Vim](https://www.vim.org/), you can use command `:set cscopeprg=gtags-cscope\ -d`,
-      see [cscopeprg](https://vimhelp.org/if_cscop.txt.html#cscopeprg) option in Vim
-      [cscope interface](https://vimhelp.org/if_cscop.txt.html).
+      For [Vim](https://www.vim.org/) integration you can use either of:
+	- `gtags.vim` plugin file provided with GNU GLOBAL. Create a symlink to `/usr/local/share/gtags/gtags.vim`
+	  under your [Vim](https://www.vim.org/) plugins directory, and then use the `:Gtags` command,
+	  see the documentation on [Vim using GLOBAL](https://www.gnu.org/software/global/globaldoc_toc.html#Vim-editor).
+	- `:set cscopeprg=gtags-cscope\ -d`, see [cscopeprg](https://vimhelp.org/if_cscop.txt.html#cscopeprg)
+	  option in Vim [cscope interface](https://vimhelp.org/if_cscop.txt.html) and
+	  [Gtags-cscope](https://www.gnu.org/software/global/globaldoc_toc.html#Gtags_002dcscope) section.
+	  Afterwards you can use `:cscope add GTAGS` command to add a database.
 
 - '**xref-tag.cscope**'
 
@@ -118,7 +126,7 @@ These Builds and Tools were tested SCons version 3.1.1.
 
     Ex. installation for Ubuntu Linux: `apt install cscope`
 
-  By default cscope version 15.8b is expected.
+  Tested with cscope version 15.8b.
 
   According to the documentation `cscope` command is meant to reference and navigate `C` source
   code, but it is known to still work with `C++` for most uses, so this tool will pass `C++`
@@ -300,40 +308,44 @@ These Builds and Tools were tested SCons version 3.1.1.
     Write a JSON Compilation Database file (with `C`/`C++` compile commands), as specified in:
 	- https://clang.llvm.org/docs/JSONCompilationDatabase.html
 
-    This file is a listing with the compilation command line of each translation unit for a target binary.
+    This file is a listing with the compilation command line of each translation unit in a target binary.
     It is meant as input for code parsing tools that need access to compilation options, like include
-    directories and macro definitions, for each source file to ensure accurate scanning.
+    directories and macro definitions, for each source file, to ensure accurate scanning.
 
-    The intent is to use this file for running [RTags](https://github.com/Andersbakken/rtags) or
-    [clang-tags](https://github.com/ffevotte/clang-tags) commands, to scan your project with clang
-    and generate both tags and a cross-references.
+    The generated file can be used for running [RTags](https://github.com/Andersbakken/rtags) or
+    [clang-tags](https://github.com/ffevotte/clang-tags) commands to generate tag and cross-reference
+    caches.
 
-    Beware that your project must compile successfully with `clang` compiler in this case. Even if
+    Beware your project must compile successfully with `clang` compiler in this case. Even if
     clang is only parsing the sources, errors may still stop it from completing the parse. If you compile
     [RTags](https://github.com/Andersbakken/rtags) or [clang-tags](https://github.com/ffevotte/clang-tags)
     from sources, which is the current installation procedure, you should use a newer version of
-    `libclang` like `6.0`. You should have the system include directories in `CFLAGS` and
-    `CXXFLAGS` construction vairables (introduced with `-isystem` flag), and also add `clang`
-    command line option `-ferror-limit=0` to the resulting JSON compilation database, so `clang`
-    will continue parsing after any number of errors. If using [RTags](https://github.com/Andersbakken/rtags),
-    it already adds `-ferror-limit=50` and offers an option to query the compiler for system include
-    directories.
+    `libclang` like `6.0`.
+
+    For these uses, you should have the system include directories in `CFLAGS` and `CXXFLAGS`
+    construction vairables (introduced with `-isystem` command line flag), and you should also add `clang`
+    command line option `-ferror-limit=0`, so `clang` will continue parsing after any number of errors.
+    See [Tool Variables](#tool-variables) section below for the options to alter the build environment
+    for the generated compile commands.
+
+    If using [RTags](https://github.com/Andersbakken/rtags), it already adds `-ferror-limit=50` option to
+    `clang`, and offers a command-line flag to query the compiler for system include directories.
 
     Builder:
      - ccdb = **CompileCommands**('compile_commands.json', [ targets... ])
 
-    The `[ target... ]` list, which gives sources to this builder, contains other executables
-    and libraries built in the same project. Source files for this binaries will be included in the
-    generated compile commands. Only `C` and `C++` sources are listed by default. The generated
-    file name is optional, if missing and the default value `compile_commands.json` will be used.
+    The `[ target... ]` list, which gives the sources to this builder, contains other executables and
+    libraries built in the same SCons project. Source files for this binaries will be included in the
+    generated compile commands. Only `C` and `C++` sources are listed by default. The generated file
+    name is optional, if needed the default value `compile_commands.json` will be used.
 
     `CompilationDatabase()` is an alias for `CompileCommands()`.
 
     When using [VariantDir()](https://scons.org/doc/production/HTML/scons-man.html#f-VariantDir),
-    the generated compilation commands will be altered so compilation
-    appears to take place in the local `SConscript` directory instead of the variant directory. In
-    this way code parsing tools do not need to deal with SCons build directory. If you want to
-    disable this and keep build commands accurate, set `CCCOM_KEEP_VARIANT_DIR` to `True`.
+    with the default parameter `duplicate = True`, generated compile commands will be altered so
+    compilation appears to use original sources from the local `SConscript` directory, instead of
+    duplicated sources in the variant directory. If you want to disable this and keep the build
+    commands accurate, set `CCCOM_KEEP_VARIANT_DIR` to `True`.
 
 - '**xref-tag.gcc-dep**'
 
@@ -751,9 +763,65 @@ These Builds and Tools were tested SCons version 3.1.1.
 	      Default value is `compile_commands.json`.
 
     - `CCCOM_KEEP_VARIANT_DIR`
-	    - Used to prevent translation of the compilation directory from the
+	    - Used to prevent name translation for duplicate source files from the
 	      [VariantDir()](https://scons.org/doc/production/HTML/scons-man.html#f-VariantDir) build directory
-	      to the local `SConscript` directory. Default `False`.
+	      to the local `SConscript` directory. Default is `False`, meaning the names will be translated, so
+	      only original sources show up in the generated compile commands.
+
+    - `CCCOM_APPEND_FLAGS`
+	    - list with dictionaries mapping variable names to their content flags to be appended to the build
+	      environment of each source file. This applies on a copy of the original build environment, so it
+	      only affects the generated compilation database, not the actual compilation.  It allows you to
+	      add extra flags to any build variables like `CFLAGS`, `CCFLAGS` and `CXXFLAGS`, and they will be
+	      included in the generated compile commands. The given variable must be a list or it will be split
+	      with [`env.Split`](https://scons.org/doc/production/HTML/scons-man.html#f-Split). Default is the
+	      empty list `[ ]`.
+
+	      Ex.:
+	      ```python
+                 CCCOM_APPEND_FLAGS = [ { 'CCFLAGS': [ '-ferror-limit=0' ] } ]
+	      ```
+
+    - `CCCOM_REMOVE_FLAGS`
+	    - list with dictionaries of variable names and their content flags to be removed (filtered out)
+	      from the build environment of each source file, before the compile command is generated. This
+	      applies on a copy of the original build environment, so it only affects the generated compile
+	      commands, not the actual compilation.
+	      This allows you to remove compile flags from and build variables like `CFLAGS`, `CCFLAGS`, and
+	      `CXXFLAGS`, and they will no longer show up in the generated compile commands. The given
+	      variable must be a list or it will be split with [`env.Split`](https://scons.org/doc/production/HTML/scons-man.html#f-Split).
+	      Default is the empty list `[ ]`.
+
+	      Ex.:
+	      ```python
+                 CCCOM_REMOVE_FLAGS = [ { 'CCFLAGS': [ '-fmax-errors=0' ] } ]
+	      ```
+
+    - `CCCOM_FILTER_FUNC`
+	    - Variable that will be substituted for each source file in the associated build environment.
+	      Should be a user function with the following arguments:
+	      ```
+               target, source, env, for_signature
+	      ```
+	      It can alter the provided build environment `env` in any way necessary, before the compile
+	      commands are generated. The substitution result should be a `True` value to include the
+	      source file in the generated compile commands, and a `False` value to exclude it. Avoid calls to
+	      [`env.Append()`](https://scons.org/doc/production/HTML/scons-man.html#f-Append), as it tends
+	      to modifiy the original build environment, not just the provided `env` whihch is known to be
+	      a clone.
+
+	      The construction environment for the `CompileCommands()` builder can be found as the
+	      `CCCOM_ENV` variable of the build environment.
+
+	      By default the variable is missing from the construction environment, which means all source
+	      files are listed in the generated compile commands. So behavior is as if the default value is
+	      `True`, or, to be complete, rather: `lambda target, source, env, for_signature: True`.
+
+    - `CCCOM_ABSOLUTE_FILE`
+	    - the [JSON Compilation Database](https://clang.llvm.org/docs/JSONCompilationDatabase.html)
+	      specification allows the source file name field `file` to be either a relative or an absolute
+	      path. The default for `CompileCommands()` builder is a relative path. You can set this variable
+	      to `True` to generate absolute source file paths.
 
 - '**xref-tag.gcc-dep**'
 
