@@ -54,7 +54,7 @@ or `cflow` commands to build tag and cross-reference files for your source code:
     tags  = env.Alias     ('all-tags',    [ ctags, xref, flow, gtags ])
 ```
 
-These Builds and Tools were tested SCons version 3.1.1.
+These Builds and Tools were tested SCons version 3.1.1 and python 2.7.
 
 ## Included tools
 - '**xref-tag.gtags**'
@@ -88,9 +88,9 @@ These Builds and Tools were tested SCons version 3.1.1.
       directly instead of the targets, but scanning for nested `#include`s will be limited, as
       the file is never compiled, so this is not recommended.
 
-      To guarantee that all dependency `#include`s are known, including system headers, add
-      to the same build environment the '**xref-tag.gcc-dep**' tool, that will append `gcc` and
-      `g++` options to always list `#include` dependencies when source files are compiled, see
+      To guarantee all dependency `#include`s are known, including system headers, add
+      '**xref-tag.gcc-dep**' tool to the build environment, It will append `gcc` and
+      `g++` options to list `#include` dependencies when source files are compiled, see
       bellow. With this mechanism however you will need to run tag generation a second time
       after the first build, and after `#include` line changes in a source file, see [ParseDepends()](https://scons.org/doc/production/HTML/scons-user.html#idm1236)
       function in SCons user manual.
@@ -153,17 +153,17 @@ These Builds and Tools were tested SCons version 3.1.1.
       `cscope`. You can give source files as `targets...`, but scanning for nested `#include`s
       will not be the same, as the file is not compiled, so you should avoid this usage when possible.
 
-      To ensure that all dependency `#include`s are parsed, with system headers, load the
-      '**xref-tag.gcc-dep**' tool (see bellow) in the SCons build environment. This will append
-      `gcc` and `g++` command options to always output the list of `#include` dependencies when
+      To ensure all dependency `#include`s are known, including  system headers, load the
+      '**xref-tag.gcc-dep**' tool (see bellow) in the build environment. It will append
+      `gcc` and `g++` options to output the list of `#include`s when
       source files are compiled. With this mechanism however you will need to run tag
       generation a second time after the first build and after any `#include` line changes in a
       source file, see [ParseDepends()](https://scons.org/doc/production/HTML/scons-user.html#idm1236)
       function in SCons user manual for this issue.
 
-      After the cross-reference fils is generated, you can use `cscope` command in the same
-      directory to find symbols from the source files and their uses in the given targets.
-      `cscope` command will update the cross-reference file before usbefore use. But if you
+      After the cross-reference fils is generated, use `cscope` command in the same
+      directory to find symbols and references.
+      `cscope` command will update the cross-reference file before before use. But if you
       move things around in your project and change the include directories, or you add new source
       files, `cscope` will not know about it untill your regenerate the `xref-file` with SCons. Some
       editors integrate with `cscope` to get access to the refrences for navigation while editing.
@@ -173,7 +173,7 @@ These Builds and Tools were tested SCons version 3.1.1.
       The `cscope` command works both in an interactive terminal with a Text
       User Interface (TUI), or in the good old command line mode with the `-L` and `-0` .. `-9` options.
 
-      If you split your project into subprojects with their own `cscope.out` files, an editor like
+      If you split your project into subprojects, with their own `cscope.out` files, an editor like
       `Vim` will be able to load them all. See [Vim support](#vim-support-function) section below
       for a Vim function and key mapping for loading `cscope.out` and `cscope.lib.out` files found
       under the current directory (up to 4 levels deep by default).
@@ -186,7 +186,7 @@ These Builds and Tools were tested SCons version 3.1.1.
       The directory scanning mode is not flexible enough for most use cases and it is recommended to
       use `CScopeXRef()` instead when possible.
 
-      In directory mode `cscope` will scan for `C`, `yacc` and `lex` source files in the following
+      In directory mode `cscope` will scan for `C`, `yacc` and `lex` and `C++` source files in the following
       directories:
 	    - current (build) directory
 	    - directories passed to `CScopeDirXRef()`
@@ -209,7 +209,7 @@ These Builds and Tools were tested SCons version 3.1.1.
 
    Ex. installation for Ubuntu Linux: `apt install exuberant-ctags`
 
-   By default Exuberant ctags 5.9 is expected.
+   Tested with Exuberant ctags 5.9.
 
    This command can only generate a tags file and locate symbol definitions, with no
    cross-references, so there is no option to search for all uses of a function or variable.
@@ -237,8 +237,8 @@ These Builds and Tools were tested SCons version 3.1.1.
 
 
       To ensure all dependecy `#includes`s are parsed, use **xref-tag.gcc-dep** tool (see
-      bellow) in the same SCons build environment. This will append `gcc` and `g++` command
-      options to always output the list of `#include` dependencies when source files are
+      bellow) in the build environment. This will append `gcc` and `g++` command
+      options to output the list of `#include` dependencies when source files are
       compiled. With this mechanism however you will need to run tag generation a second
       time after the first build and after any `#include` line changes in a source file, see
       [ParseDepends()](https://scons.org/doc/production/HTML/scons-user.html#idm1236)
@@ -269,7 +269,8 @@ These Builds and Tools were tested SCons version 3.1.1.
 
     Ex. installation for Ubuntu Linux: `sudo apt install cflow`
 
-    By default GNU cflow 1.6 is expected.
+    Tested only somewhat successfully with GNU cflow 1.6 as it looks it can not successfully
+    parse all system headers.
 
     The command works with 'C' sources, and will output a direct and reverse call tree over the
     entire set of sources.  Will also output a third format which is a cross-references of uses
@@ -309,15 +310,15 @@ These Builds and Tools were tested SCons version 3.1.1.
 	- https://clang.llvm.org/docs/JSONCompilationDatabase.html
 
     This file is a listing with the compilation command line of each translation unit in a target binary.
-    It is meant as input for code parsing tools that need access to compilation options, like include
-    directories and macro definitions, for each source file, to ensure accurate scanning.
+    It is meant as input for code parsing tools based on `clang`, that need access to compilation options,
+    like include directories and macro definitions, for each source file, to ensure accurate scanning.
 
     The generated file can be used for running [RTags](https://github.com/Andersbakken/rtags) or
     [clang-tags](https://github.com/ffevotte/clang-tags) commands to generate tag and cross-reference
     caches.
 
     Beware your project must compile successfully with `clang` compiler in this case. Even if
-    clang is only parsing the sources, errors may still stop it from completing the parse. If you compile
+    clang is only parsing sources, errors may still stop it from completing the parse. If you compile
     [RTags](https://github.com/Andersbakken/rtags) or [clang-tags](https://github.com/ffevotte/clang-tags)
     from sources, which is the current installation procedure, you should use a newer version of
     `libclang` like `6.0`.
@@ -336,16 +337,15 @@ These Builds and Tools were tested SCons version 3.1.1.
 
     The `[ target... ]` list, which gives the sources to this builder, contains other executables and
     libraries built in the same SCons project. Source files for this binaries will be included in the
-    generated compile commands. Only `C` and `C++` sources are listed by default. The generated file
-    name is optional, if needed the default value `compile_commands.json` will be used.
+    generated compile commands. Only `C` and `C++` sources are listed by default. The name for the 
+    generated file is optional, if needed the default value `compile_commands.json` will be used.
 
     `CompilationDatabase()` is an alias for `CompileCommands()`.
 
-    When using [VariantDir()](https://scons.org/doc/production/HTML/scons-man.html#f-VariantDir),
-    with the default parameter `duplicate = True`, generated compile commands will be altered so
-    compilation appears to use original sources from the local `SConscript` directory, instead of
-    duplicated sources in the variant directory. If you want to disable this and keep the build
-    commands accurate, set `CCCOM_KEEP_VARIANT_DIR` to `True`.
+    When using [`VariantDir(duplicate = True)`](https://scons.org/doc/production/HTML/scons-man.html#f-VariantDir),
+    , generated compile commands will be altered so compilation appears to use original sources from
+    the local `SConscript` directory, instead of duplicated sources in the variant directory. If you
+    want to disable this and keep the build commands accurate, set `CCCOM_KEEP_VARIANT_DIR` to `True`.
 
 - '**xref-tag.gcc-dep**'
 
@@ -722,7 +722,7 @@ These Builds and Tools were tested SCons version 3.1.1.
 
     - `$CCCOM_SUFFIXES`
 	    - List with suffixes of source files to be included in the generated commands list. Default is
-	      the `C` and `C++` extensions list odocumented by `SCons` for the `cc` and `cxx` tools:
+	      the `C` and `C++` extensions list documented by `SCons` for the `cc` and `cxx` tools:
 
 	      ```python
                  [ '.c', '.m', '.C', '.cc', '.cpp', '.cxx', '.c++', '.C++', '.mm' ]
@@ -805,10 +805,24 @@ These Builds and Tools were tested SCons version 3.1.1.
 	      ```
 	      It can alter the provided build environment `env` in any way necessary, before the compile
 	      commands are generated. The substitution result should be a `True` value to include the
-	      source file in the generated compile commands, and a `False` value to exclude it. Avoid calls to
-	      [`env.Append()`](https://scons.org/doc/production/HTML/scons-man.html#f-Append), as it tends
-	      to modifiy the original build environment, not just the provided `env` whihch is known to be
-	      a clone.
+	      source file in the generated compile commands, and a `False` value to exclude it.
+	      
+	      This function can be dangerous, as the provided environment `env` may be a (clone of) a
+	      proxy oject used to access the real build environment, see `OverrideEnvironment` class in
+	      `SCons` API. The proxy object can still modify the original environment, so this function
+	      must always avoid in-place modifications of construction variables, and calls to
+	      [`env.Append()`](https://scons.org/doc/production/HTML/scons-man.html#f-Append) or similar
+	      functions. Example: instead of
+	      ```
+               env['CCFLAGS'].append('-Werror')
+	       env.Append(CCFLAGS = '-Wall'
+	      ```
+	      you should use
+	      ```
+               env['CCFLAGS'] = env['CCFLAGS'] + [ '-Werror', '-Wall' ]
+	      ```
+	      so the construction variable is replaced by the asignament, instead of modified in-place
+	      with a method like `.append()` or `.replace()`.
 
 	      The construction environment for the `CompileCommands()` builder can be found as the
 	      `CCCOM_ENV` variable of the build environment.
@@ -818,7 +832,7 @@ These Builds and Tools were tested SCons version 3.1.1.
 	      `True`, or, to be complete, rather: `lambda target, source, env, for_signature: True`.
 
     - `CCCOM_ABSOLUTE_FILE`
-	    - the [JSON Compilation Database](https://clang.llvm.org/docs/JSONCompilationDatabase.html)
+	    - [JSON Compilation Database](https://clang.llvm.org/docs/JSONCompilationDatabase.html)
 	      specification allows the source file name field `file` to be either a relative or an absolute
 	      path. The default for `CompileCommands()` builder is a relative path. You can set this variable
 	      to `True` to generate absolute source file paths.
@@ -839,7 +853,7 @@ These Builds and Tools were tested SCons version 3.1.1.
     - `$GCCDEP_SUFFIX`
 	    - suffix for the generated make dependency rules files, default `'.d'`
 
-    - `$gccDEP_SUFFIXES`
+    - `$GCCDEP_SUFFIXES`
 	    - list of file suffixes for which the compiler can generate make dependency rules.
 	      Default: `[ '.c', '.cc', '.cpp', '.cxx', '.c++', '.C++', '.C' ]`
 
