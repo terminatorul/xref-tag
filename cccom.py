@@ -19,8 +19,10 @@
 """
 
 import os
+import re
 
 import SCons.Node
+import SCons.Environment
 import SCons.Script
 
 import source_browse_base as base
@@ -80,6 +82,19 @@ def json_escape_string(string):
     """ escape a string for inclusion in the generated .json file """
     return '"' + string.replace('\\', '\\\\').replace('"', '\\"') + '"'
 
+def clone_build_env(env, overrides = { }):
+    if isinstance(env, SCons.Environment.OverrideEnvironment) and '__subject' in env.__dict__:
+        nested_overrides = { }
+        nested_overrides.update(env.__dict__['overrides'])
+        nested_overrides.update(overrides)
+
+        return clone_build_env(env.__dict__['__subject'], nested_overrides)
+
+    new_env = env.Clone()
+    new_env.Replace(**overrides)
+
+    return new_env.Clone()
+
 def write_compile_commands(target, source, env):
     """
         generator function to write the compilation database file (default 'compile_commands.json') for
@@ -110,7 +125,7 @@ def write_compile_commands(target, source, env):
             if is_object_file(child, obj_ixes):
                 for child_src in child.sources:
                     if is_cc_source(child_src, cc_suffixes):
-                        build_env = child.get_build_env().Clone()
+                        build_env = clone_build_env(child.get_build_env())
 
                         build_targets = [ child ] + child.alter_targets()[0]
 
@@ -124,23 +139,20 @@ def write_compile_commands(target, source, env):
                         abs_file_path = getBool('CCCOM_ABSOLUTE_FILE')
 
                         if not keep_variant_dir or append_flags or filter_flags or 'CCCOM_FILTER_FUNC' in env:
-                            for flag_set in append_flags:
-                                for var_name in flag_set:
-                                    if var_name in build_env:
-                                        if not isinstance(build_env[var_name], list):
-                                            build_env[var_name] = build_env.Split(build_env[var_name])
-                                        build_env[var_name] = build_env[var_name] + flag_set[var_name]
-                                    else:
-                                        build_env[var_name] = flag_set[var_name]
-
                             for filter_set in filter_flags:
                                 for var_name in filter_set:
                                     if var_name in build_env:
                                         for val in env.Split(filter_set[var_name]):
                                             if val in build_env[var_name]:
                                                 if val in build_env[var_name]:
-                                                    build_env[var_name] = build_env.Split(build_env[var_name])[:]
-                                                    build_env[var_name].remove(val)
+                                                    if isinstance(build_env[var_name], str):
+                                                        build_env[var_name] = re.sub(r'(^|\s+)' + re.escape(val) + r'(\s+|$)', ' ', build_env[var_name])
+                                                    else:
+                                                        while val in build_env[var_name]:
+                                                            build_env[var_name].remove(val)
+
+                            for flag_set in append_flags:
+                                build_env.Append(**flag_set)
 
                             if 'CCCOM_FILTER_FUNC' in env:
                                 build_env['CCCOM_FILTER_FUNC'] = env['CCCOM_FILTER_FUNC']

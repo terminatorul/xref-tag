@@ -782,6 +782,9 @@ These Builds and Tools were tested SCons version 3.1.1 and python 2.7.
                  CCCOM_APPEND_FLAGS = [ { 'CCFLAGS': [ '-ferror-limit=0' ] } ]
 	      ```
 
+	      `CCCOM_APPEND_FLAGS` has precedence over `CCCOM_REMOVE_FLAGS`, this way you can replace multiple
+	      occurrences of the same flag with a single one, by including it in both variables.
+
     - `CCCOM_REMOVE_FLAGS`
 	    - list with dictionaries of variable names and their content flags to be removed (filtered out)
 	      from the build environment of each source file, before the compile command is generated. This
@@ -806,23 +809,6 @@ These Builds and Tools were tested SCons version 3.1.1 and python 2.7.
 	      It can alter the provided build environment `env` in any way necessary, before the compile
 	      commands are generated. The substitution result should be a `True` value to include the
 	      source file in the generated compile commands, and a `False` value to exclude it.
-	      
-	      This function can be dangerous, as the provided environment `env` may be a (clone of) a
-	      proxy oject used to access the real build environment, see `OverrideEnvironment` class in
-	      `SCons` API. The proxy object can still modify the original environment, so this function
-	      must always avoid in-place modifications of construction variables, and calls to
-	      [`env.Append()`](https://scons.org/doc/production/HTML/scons-man.html#f-Append) or similar
-	      functions. Example: instead of
-	      ```
-               env['CCFLAGS'].append('-Werror')
-	       env.Append(CCFLAGS = '-Wall'
-	      ```
-	      you should use
-	      ```
-               env['CCFLAGS'] = env['CCFLAGS'] + [ '-Werror', '-Wall' ]
-	      ```
-	      so the construction variable is replaced by the asignament, instead of modified in-place
-	      with a method like `.append()` or `.replace()`.
 
 	      The construction environment for the `CompileCommands()` builder can be found as the
 	      `CCCOM_ENV` variable of the build environment.
