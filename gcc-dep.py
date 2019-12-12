@@ -20,6 +20,8 @@ import re
 import errno
 
 import SCons.Script
+import SCons.Util
+
 from SCons.Builder import DictEmitter, CompositeBuilder
 from SCons.Builder import ListEmitter
 from SCons.Action  import ListAction
@@ -46,11 +48,11 @@ def logical_lines(physical_lines, joiner = ''.join):
 
 def XRefParseDepends(self, filename, must_exist = None, only_one = 0, existing_only = False):
     """
-        Similar to the SCons environment ParseDepends() method, with the following additions:
+        Similar to the SCons environment ParseDepends() method, with the following changes:
             - filenames with spaces and tabs are properly parsed, as long as file names do not end with
               the escape character '\\', which can trigger errors.
             - a target filename with colons is properly parsed
-            - provide option to only add dependencies that exist in the file system, so if user deletes
+            - provide an option to only add dependencies that exist in the file system, so if user deletes
               or moves a header, the build can still proceed as usual
     """
     filename = self.subst(filename)
@@ -123,37 +125,100 @@ def gcc_dep_emitter(target, source, env):
         builders in the environment, to include and load the new dependency file with the
         object
     """
-    getList     = base.BindCallArguments(base.getList,   target, source, env, False)
+    getBool     = base.BindCallArguments(base.getBool,   target, source, env, lambda x: x)
     getString   = base.BindCallArguments(base.getString, target, source, env, None)
+    getList     = base.BindCallArguments(base.getList,   target, source, env, False)
 
     if len(target):
         ext = os.path.splitext(str(source[0]))[1]
 
-        if ext in getList('GCCDEP_SUFFIXES'):
+        is_cc  = ext in getList('GCCDEP_CSUFFIXES')
+        is_cxx = ext in getList('GCCDEP_CXXSUFFIXES')
 
-            if callable(env['GCCDEP_FILENAME']):
-                # make explicit call to work around the relative path outside issue
-                dep_file = env.File(env['GCCDEP_FILENAME'](target, source, env, False))
+        is_static_obj = base.match_ixes(target[0], getString('GCCDEP_OBJPREFIX'),   getString('GCCDEP_OBJSUFFIX'))
+        is_shared_obj = base.match_ixes(target[0], getString('GCCDEP_SHOBJPREFIX'), getString('GCCDEP_SHOBJSUFFIX'))
+
+        if (is_cc or is_cxx) and (is_static_obj or is_shared_obj):
+            if is_cc:
+                is_gnu_compiler = getBool('GCCDEP_CHECK_USING_GCC' if is_static_obj else 'GCCDEP_CHECK_USING_SH_GCC')
+                has_makedep_flags = ('GCCDEP_MAKEDEP_CFLAGS' in env and env['GCCDEP_MAKEDEP_CFLAGS'])
             else:
-                dep_file = env.File(env.subst('$GCCDEP_FILENAME', False, source, target))
+                is_gnu_compiler = getBool('GCCDEP_CHECK_USING_GXX' if is_static_obj else 'GCCDEP_CHECK_USING_SH_GXX')
+                has_makedep_flags = ('GCCDEP_MAKEDEP_CXXFLAGS' in env and env['GCCDEP_MAKEDEP_CXXFLAGS'])
 
-            env.SideEffect(dep_file, target[0])
 
-            script_dir = env.fs.getcwd()
-            env.fs.chdir(env.Dir('#'))
+            if is_gnu_compiler:
+                if not has_makedep_flags:
+                    if is_cc:
+                        env['GCCDEP_MAKEDEP_CFLAGS'] = env['GCCDEP_CFLAGS']
+                    else:
+                        env['GCCDEP_MAKEDEP_CXXFLAGS'] = env['GCCDEP_CXXFLAGS']
 
-            try:
-                # env.ParseDepends(dep_file.get_abspath())
-                env.XRefParseDepends(dep_file.get_abspath(), existing_only = True)
-            finally:
-                env.fs.chdir(script_dir)
+                if callable(env['GCCDEP_FILENAME']):
+                    # make explicit call, to work around the "relative path outside" issue
+                    dep_file = env.File(env['GCCDEP_FILENAME'](target, source, env, False))
+                else:
+                    dep_file = env.File(env.subst('$GCCDEP_FILENAME', 0, source, target))
 
-            env.Clean(target[0], dep_file)
+                env.SideEffect(dep_file, target[0])
+
+                script_dir = env.fs.getcwd()
+                env.fs.chdir(env.Dir('#'))
+
+                try:
+                    # env.ParseDepends(dep_file.get_abspath())
+                    env.XRefParseDepends(dep_file.get_abspath(), existing_only = True)
+                finally:
+                    env.fs.chdir(script_dir)
+
+                env.Clean(target[0], dep_file)
+            else:
+                if has_makedep_flags:
+                    if is_cc:
+                        env['GCCDEP_MAKEDEP_CFLAGS'] = [ ]
+                    else:
+                        env['GCCDEP_MAKEDEP_CXXFLAGS'] = [ ]
 
     return target, source
 
 def reload_dependency_file(target, source, env):
-    env.XRefParseDepends(env.subst('$GCCDEP_FILENAME', False, target, source))
+    getString   = base.BindCallArguments(base.getString, target, source, env, None)
+    getList     = base.BindCallArguments(base.getList,   target, source, env, False)
+
+    ext = os.path.splitext(str(source[0]))[1]
+    is_cc  = ext in getList('GCCDEP_CSUFFIXES')
+    is_cxx = ext in getList('GCCDEP_CXXSUFFIXES')
+
+    if is_cc or is_cxx:
+        is_static_obj = base.match_ixes(target[0], getString('GCCDEP_OBJPREFIX'),   getString('GCCDEP_OBJSUFFIX'))
+        is_shared_obj = base.match_ixes(target[0], getString('GCCDEP_SHOBJPREFIX'), getString('GCCDEP_SHOBJSUFFIX'))
+
+        if is_static_obj or is_shared_obj:
+            if is_cc:
+                if 'GCCDEP_MAKEDEP_CFLAGS' in env and env['GCCDEP_MAKEDEP_CFLAGS']:
+                    env.XRefParseDepends(env.subst('$GCCDEP_FILENAME', 0, target, source))
+            else:
+                if 'GCCDEP_MAKEDEP_CXXFLAGS' in env and env['GCCDEP_MAKEDEP_CXXFLAGS']:
+                    env.XRefParseDepends(env.subst('$GCCDEP_FILENAME', 0, target, source))
+
+tool_basename_cache = { }
+
+def find_tool_basename(env, cmd):
+    path    = env['ENV']['PATH']    if 'ENV' in env and 'PATH'    in env['ENV'] else ''
+    pathext = env['ENV']['PATHEXT'] if 'ENV' in env and 'PATHEXT' in env['ENV'] else ''
+
+    if path not in tool_basename_cache:
+        tool_basename_cache[path] = { }
+
+    if pathext not in tool_basename_cache[path]:
+        tool_basename_cache[path][pathext] = { }
+
+    if cmd not in tool_basename_cache[path][pathext]:
+        tool_basename_cache[path][pathext][cmd] = \
+            os.path.splitext(os.path.split(os.path.realpath(env.WhereIs(cmd)))[1])[0]
+        # print("Found tool " + str(env.WhereIs(cmd)) + " in path " + str(path))
+
+    return tool_basename_cache[path][pathext][cmd]
 
 def generate(env, **kw):
     """
@@ -162,12 +227,17 @@ def generate(env, **kw):
         into existing Object / SharedObject builders in the environment
     """
 
+    geBool  = base.BindCallArguments(base.getList, None, None, env, lambda x: x)
     getList = base.BindCallArguments(base.getList, None, None, env, False)
 
     env.SetDefault\
         (
             GCCDEP_SUFFIX   = '.d',
-            GCCDEP_SUFFIXES = [ '.c', '.cc', '.cpp', '.cxx', '.c++', '.C++', '.C' ],
+            GCCDEP_CSUFFIXES = [ '.c' ] + ([ ] if SCons.Util.case_sensitive_suffixes('.c', 'C') else [ '.C' ] ),
+            GCCDEP_CXXSUFFIXES  =
+                [ '.cc', '.cpp', '.cxx', '.c++', '.C++' ]
+                    +
+                ([ '.C' ] if SCons.Util.case_sensitive_suffixes('.c', '.C') else [ ]),
             GCCDEP_FILENAME =
                 lambda target, source, env, for_signature:
                     env.File(target[0]).Dir('depend').Dir\
@@ -180,10 +250,63 @@ def generate(env, **kw):
                                 )
                         )
                             .File(str(target[0].name) + env.subst('$GCCDEP_SUFFIX', False, source, target)),
-            GCCDEP_FLAGS    = [ '-MD', '-MF', '$GCCDEP_FILENAME' ],
+            GCCDEP_CFLAGS_VAR        = 'CFLAGS',
+            GCCDEP_CXXFLAGS_VAR      = 'CXXFLAGS',
+            GCCDEP_MAKEDEP_CFLAGS    = [ ],
+            GCCDEP_MAKEDEP_CXXFLAGS  = [ ],
+            GCCDEP_OBJPREFIX         = '$OBJPREFIX',
+            GCCDEP_OBJSUFFIX         = '$OBJSUFFIX',
+            GCCDEP_SHOBJPREFIX       = '$SHOBJPREFIX',
+            GCCDEP_SHOBJSUFFIX       = '$SHOBJSUFFIX',
+            GCCDEP_CFLAGS            = [ '-MD', '-MF', '$GCCDEP_FILENAME' ],
+            GCCDEP_CXXFLAGS          = [ '-MD', '-MF', '$GCCDEP_FILENAME' ],
+            GCCDEP_CC                = '$CC',
+            GCCDEP_GCC_BASENAME      = 'gcc',
+            GCCDEP_SHCC              = '$SHCC',
+            GCCDEP_GCC_SH_BASENAME   = 'gcc',
+            GCCDEP_CXX               = '$CXX',
+            GCCDEP_GXX_BASENAME      = 'g++',
+            GCCDEP_SHCXX             = '$SHCXX',
+            GCCDEP_GXX_SH_BASENAME   = 'g++',
+            GCCDEP_CHECK_USING_GCC   =
+                lambda target, source, env, for_signature:
+                    not not re.match
+                        (
+                            r'^(.*\b)?' + re.escape(env.subst('$GCCDEP_GCC_BASENAME', 1, source, target)) + r'(-[0-9\.]+)?(\b|\s|$)',
+                            find_tool_basename(env, env.subst('$GCCDEP_CC', 0, source, target))
+                        ),
+            GCCDEP_CHECK_USING_SH_GCC   =
+                lambda target, source, env, for_signature:
+                    not not re.match
+                        (
+                            r'^(.*\b)?' + re.escape(env.subst('$GCCDEP_GCC_SH_BASENAME', 1, source, target)) + r'(-[0-9\.]+)?(\b|\s|$)',
+                            find_tool_basename(env, env.subst('$GCCDEP_SHCC', 0, source, target))
+                        ),
+            GCCDEP_CHECK_USING_GXX   =
+                lambda target, source, env, for_signature:
+                    not not re.match
+                        (
+                            r'^(.*\b)?' + re.escape(env.subst('$GCCDEP_GXX_BASENAME', 1, source, target)) + r'(-[0-9\.]+)?(\b|\s|$)',
+                            find_tool_basename(env, env.subst('$GCCDEP_CXX', 0, source, target))
+                        ),
+            GCCDEP_CHECK_USING_SH_GXX   =
+                lambda target, source, env, for_signature:
+                    not not re.match
+                        (
+                            r'^(.*\b)?' + re.escape(env.subst('$GCCDEP_GXX_SH_BASENAME', 1, source, target)) + r'(-[0-9\.]+)?(\b|\s|$)',
+                            find_tool_basename(env, env.subst('$GCCDEP_SHCXX', 0, source, target))
+                        ),
             GCCDEP_INJECTED = False
         )
-    env.Append(CCFLAGS = env['GCCDEP_FLAGS'])
+
+    env.Append\
+        (
+            **
+            {
+                env['GCCDEP_CFLAGS_VAR']:   [ '$GCCDEP_MAKEDEP_CFLAGS' ],
+                env['GCCDEP_CXXFLAGS_VAR']: [ '$GCCDEP_MAKEDEP_CXXFLAGS' ]
+            }
+        )
 
     builders = [ env['BUILDERS'][name] for name in [ 'StaticObject', 'SharedObject' ] if name in env['BUILDERS'] ]
 
@@ -197,7 +320,7 @@ def generate(env, **kw):
     for builder in builders:
         # inject gcc_dep_emitter in the current builder
         if isinstance(builder.emitter, DictEmitter):
-            for ext in getList('GCCDEP_SUFFIXES'):
+            for ext in getList('GCCDEP_CSUFFIXES') + getList('GCCDEP_CXXSUFFIXES'):
                 if ext in builder.emitter:
                     if isinstance(builder.emitter[ext], ListEmitter):
                         if gcc_dep_emitter not in builder.emitter[ext]:
@@ -219,7 +342,7 @@ def generate(env, **kw):
                 builder.emitter[ext] = ListEmitter([ old_emitter, gcc_dep_emitter ])
 
         if isinstance(builder, CompositeBuilder):
-            for ext in getList('GCCDEP_SUFFIXES'):
+            for ext in getList('GCCDEP_CSUFFIXES') + getList('GCCDEP_CXXSUFFIXES'):
                 try:
                     if ext in builder.cmdgen:
                         builder.add_action\
@@ -240,5 +363,5 @@ def generate(env, **kw):
         env.AddMethod(XRefParseDepends)
 
 def exists(env):
-    """ Return True if the tool is present in the environment """
-    return env.get('GCCDEP_INJECTED', False)
+    """ Returns True """
+    return True

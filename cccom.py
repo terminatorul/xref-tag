@@ -27,21 +27,6 @@ import SCons.Script
 
 import source_browse_base as base
 
-def is_object_file(node, obj_ixes):
-    """
-        check the node is derived (built) and the file name matches convention for static or shared
-        object file
-    """
-    if node.is_derived():
-        basename = os.path.split(node.get_path())[1]
-
-        return \
-            basename.startswith(obj_ixes[0]) and node.get_suffix() == obj_ixes[1] \
-                or \
-            basename.startswith(obj_ixes[2]) and node.get_suffix() == obj_ixes[3]
-
-    return False
-
 def is_cc_source(node, cc_suffixes):
     """ check if not is a source node with name matching the convention for C and C++ source files """
 
@@ -122,7 +107,7 @@ def write_compile_commands(target, source, env):
         child = nodeWalker.get_next()
 
         while child:
-            if is_object_file(child, obj_ixes):
+            if base.is_object_file(child, obj_ixes):
                 for child_src in child.sources:
                     if is_cc_source(child_src, cc_suffixes):
                         build_env = clone_build_env(child.get_build_env())

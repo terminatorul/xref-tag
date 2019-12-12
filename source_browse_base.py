@@ -469,8 +469,8 @@ def search_executable(cmd_basename, dirname, top_dir, pathext, env):
 
 def translate_path_executable(cmd, cwd, new_cwd, env):
     """
-        Translate `cmd` so it can be invoked from directory `new_cwd`, and it will load the same executable
-        as `cmd` when invoked from `cwd`.
+        Translate command `cmd` so it can be run from directory `new_cwd`, and it will load the same
+        executable as `cmd` when run from `cwd`.
 
         Translation takes into account searching the directories on PATH if `cmd` is a basename only.
 
@@ -664,3 +664,30 @@ def test_get_generated_list(env, start_pos = 10, upper_bound = 20):
                 yield "val_" + str(val)
 
     return generated_list(print_generator, start_pos, upper_bound)
+
+def match_ixes(node, prefix, suffix):
+    basename = os.path.split(node.get_path())[1]
+
+    return basename.startswith(prefix) and node.get_suffix() == suffix
+
+def is_object_file(node, obj_ixes):
+    """
+        check the node is derived (built) and the file name matches convention for static or shared
+        object file
+    """
+    if node.is_derived():
+        basename = os.path.split(node.get_path())[1]
+
+        return \
+            basename.startswith(obj_ixes[0]) and node.get_suffix() == obj_ixes[1] \
+                or \
+            basename.startswith(obj_ixes[2]) and node.get_suffix() == obj_ixes[3]
+
+    return False
+
+def has_flags(flag_list, sublist):
+    for flag in sublist:
+            if flag not in flag_list:
+                return False
+
+    return True
