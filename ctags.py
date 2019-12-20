@@ -73,24 +73,7 @@ def run_ctags(target, source, env):
     variant_dir = target[0].cwd
     ctags_dir  = variant_dir.Dir(getFile('CTAGSDIRECTORY'))
 
-    command = \
-       env.Split(env['CTAGS']) + env.Split(env['CTAGSFLAGS']) + env.Split(env['CTAGSSTDINFLAGS']) \
-            + \
-        env.Split(env['CTAGSOUTPUTFLAG']) \
-            + \
-        [ base.translate_relative_path(str(target[0]), '.', str(ctags_dir)) ]
-
-    command[0] = base.translate_path_executable(command[0], str(variant_dir), str(ctags_dir), env)
-
-    for definition in env.Split(env['CTAGSDEF']):
-        command += env.Split(env['CTAGSDEFPREFIX']) + [ definition ]
-
-    print\
-        (
-            '(cd ' + ' '.join(base.shell_escape([ str(ctags_dir) ]))
-                + ' && ' +
-            ' '.join(base.shell_escape(command)) + ')'
-        )
+    command = env.Split(env.subst('$CTAGSCOM', True, target, source, lambda x: x))
 
     ctags_process = \
         subprocess.Popen(command, stdin = subprocess.PIPE, cwd = str(ctags_dir), env = env['ENV'])
@@ -110,9 +93,6 @@ def run_ctags(target, source, env):
 def exists(env):
     """ Check if `ctags` command is present """
     return env['CTAGS'] if 'CTAGS' in env else None
-
-def show_tags_generation_message(target, source, env):
-    pass
 
 def generate(env, **kw):
     """
@@ -196,13 +176,64 @@ def generate(env, **kw):
                     '.vim',
                     '.y'
                 ],
-            CTAGSKEEPVARIANTDIR = False
+            CTAGSKEEPVARIANTDIR = False,
+            CTAGS_TRANSLATED_CMD =
+                lambda target, source, env, for_signature:
+                    [
+                        base.translate_path_executable
+                            (
+                                str(env.Split(env.subst("$CTAGS", True, target, source, lambda x: x))[0]),
+                                str(target[0].cwd),
+                                str(target[0].cwd.Dir(env.subst('$CTAGSDIRECTORY', True, target, source, lambda x: x))),
+                                env
+                            )
+                    ] \
+                        + \
+                    env.Split(env.subst("$CTAGS", True, target, source, lambda x: x))[1:],
+
+            CTAGS_TRANSLATED_TARGET =
+                lambda target, source, env, for_signature:
+                    base.translate_relative_path\
+                        (
+                            str(target[0]),
+                            '.',
+                            str(target[0].cwd.Dir(env.subst('$CTAGSDIRECTORY', True, target, source, lambda x: x)))
+                        ),
+
+            CTAGS_DEF_ARGS =
+                lambda target, source, env, for_signature:
+                    [
+                        arg
+                            for ctags_def in env.Split(env.subst('$CTAGSDEF', True, target, source, lambda x: x))
+                                for arg in env.Split(env.subst('$CTAGSDEFPREFIX', True, target, source, lambda x: x))
+                                                + [ ctags_def ]
+                    ],
+
+            CTAGSCOM =
+                lambda target, source, env, for_signature:
+                    env.Split(env.subst('$CTAGS_TRANSLATED_CMD',    True, target, source, lambda x: x))
+                            +
+                    env.Split(env.subst('$CTAGSFLAGS',              True, target, source, lambda x: x))
+                            +
+                    env.Split(env.subst('$CTAGSSTDINFLAGS',         True, target, source, lambda x: x))
+                            +
+                    env.Split(env.subst('$CTAGSOUTPUTFLAG',         True, target, source, lambda x: x))
+                            +
+                    [ (env.subst('$CTAGS_TRANSLATED_TARGET', True, target, source, lambda x: x)) ]
+                            +
+                    env.Split(env.subst('$CTAGS_DEF_ARGS',          True, target, source, lambda x: x)),
+
+            CTAGSCOM_QUOTED =
+                lambda target, source, env, for_signature:
+                    base.env_shell_escape(env, env.Split(env.subst('$CTAGSCOM', True, target, source, lambda x: x))),
+
+            CTAGSCOMSTR = "(cd $CTAGSDIRECTORY && $CTAGSCOM_QUOTED)"
         )
 
     env['BUILDERS']['TagsFile'] = env.Builder\
             (
                 emitter = collect_source_dependencies,
-                action  = SCons.Script.Action(run_ctags, show_tags_generation_message),
+                action  = SCons.Script.Action(run_ctags, '$CTAGSCOMSTR'),
                 multi   = True,
                 name    = 'TagsFile',
                 suffix  = '4f9807f6-fcb3-47ff-ac8e-e3a0e2e2c478',
