@@ -82,15 +82,6 @@ def run_cscope(target, source, env):
     variant_dir = target[0].cwd
     cscope_dir  = variant_dir.Dir(getFile('CSCOPEDIRECTORY'))
 
-    command = getList('CSCOPE') + getList('CSCOPEFLAGS')
-
-    command[0] = base.translate_path_executable(command[0], str(variant_dir), str(cscope_dir), env)
-
-    command += \
-        getList('CSCOPESTDINFLAGS') + getList('CSCOPEOUTPUTFLAG') \
-            + \
-        [ base.translate_relative_path(str(target[0]), '.', str(cscope_dir)) ]
-
     namefile = None
 
     if 'CSCOPENAMEFILE' in env:
@@ -98,7 +89,7 @@ def run_cscope(target, source, env):
 
         nameFileFlags = getList('CSCOPENAMEFILEFLAGS')
 
-        for arg in command:
+        for arg in env.Split(env.subst("$CSCOPEFLAGS", True, target, source, lambda x: x)):
             if arg in nameFileFlags:
                 namefile.write(arg)
                 namefile.write('\n')
@@ -130,18 +121,7 @@ def run_cscope(target, source, env):
                     )
             cscope_env[inc_var] = os.pathsep.join(inc_dirs)
 
-    inc_path = \
-        base.translate_include_path\
-            (
-                env,
-                getPathList('CSCOPEPATH') + getPathList('CSCOPESYSPATH'),
-                variant_dir,
-                cscope_dir,
-                getBool('CSCOPEINCLUDEVARIANTDIR')
-            )
-
-    for incdir in inc_path:
-        command += getList('CSCOPEINCFLAG') + [ incdir ]
+    inc_path = env.Split(env.subst("$CSCOPE_TRANSLATED_PATH", True, target, source, lambda x: x))
 
     if namefile is not None:
         for inc_var in inc_var_list:
@@ -162,12 +142,7 @@ def run_cscope(target, source, env):
             namefile.write('\n')
 
     try:
-        print\
-            (
-                '(cd ' + ' '.join(base.shell_escape([ str(cscope_dir) ]))
-                        +  ' && ' + \
-                 ' '.join(base.shell_escape(command)) + ')'
-            )
+        command = env.Split(env.subst("$CSCOPECOM", True, target, source, lambda x: x))
 
         cscope_process = \
             subprocess.Popen(command, stdin = subprocess.PIPE, env = cscope_env, cwd = str(cscope_dir))
@@ -396,6 +371,7 @@ def generate(env, **kw):
                             for path_variable in [ 'CSCOPEPATH', 'CSCOPESYSPATH' ]
                                 for path in base.getPathList(target, source, env, None, path_variable)
                     ],
+
             CSCOPELISTINPUT       =
                 lambda target, source, env, for_signature:
                     '\n'.join\
@@ -406,13 +382,81 @@ def generate(env, **kw):
                                     for arg in sorted([ str(src) for src in source ])
                             ]
                         ),
+
+            CSCOPE_TRANSLATED_CMD =
+                lambda target, source, env, for_signature:
+                    [
+                        base.translate_path_executable
+                            (
+                                str(env.Split(env.subst("$CSCOPE", True, target, source, lambda x: x))[0]),
+                                str(target[0].cwd),
+                                str(target[0].cwd.Dir(env.subst('$CSCOPEDIRECTORY', True, target, source, lambda x: x))),
+                                env
+                            )
+                    ] \
+                        + \
+                    env.Split(env.subst("$CSCOPE", True, target, source, lambda x: x))[1:],
+
+            CSCOPE_TRANSLATED_TARGET =
+                lambda target, source, env, for_signature:
+                    base.translate_relative_path\
+                        (
+                            str(target[0]),
+                            '.',
+                            str(target[0].cwd.Dir(env.subst('$CSCOPEDIRECTORY', True, target, source, lambda x: x)))
+                        ),
+
+            CSCOPE_TRANSLATED_PATH =
+                lambda target, source, env, for_signature:
+                    base.translate_include_path\
+                        (
+                            env,
+                            env.Split(env.subst('$CSCOPEPATH',    True, target, source, lambda x: x))
+                                +
+                            env.Split(env.subst('$CSCOPESYSPATH', True, target, source, lambda x: x)),
+                            target[0].cwd,
+                            target[0].cwd.Dir(env.subst('$CSCOPEDIRECTORY', True, target, source, lambda x: x)),
+                            env.subst('$CSCOPEINCLUDEVARIANTDIR', True, target, source, lambda x: not not x)
+                        ),
+
+            CSCOPE_TRANSLATED_INC =
+                lambda target, source, env, for_signature:
+                    [
+                        arg
+                            for incdir in \
+                                    env.Split(env.subst('$CSCOPE_TRANSLATED_PATH', True, target, source, lambda x: x))
+                                for arg in \
+                                        env.Split(env.subst('$CSCOPEINCFLAG', True, target, source, lambda x: x)) \
+                                            + \
+                                        [ incdir ]
+                    ],
+
+            CSCOPECOM              =
+                lambda target, source, env, for_signature:
+                    env.Split(env.subst("$CSCOPE_TRANSLATED_CMD", True, target, source, lambda x: x)) \
+                        + \
+                    env.Split(env.subst("$CSCOPEFLAGS",           True, target, source, lambda x: x)) \
+                        + \
+                    env.Split(env.subst("$CSCOPESTDINFLAGS",      True, target, source, lambda x: x)) \
+                        + \
+                    env.Split(env.subst("$CSCOPEOUTPUTFLAG",      True, target, source, lambda x: x)) \
+                        + \
+                    [ env.subst("$CSCOPE_TRANSLATED_TARGET",      True, target, source, lambda x: x) ] \
+                        +
+                    env.Split(env.subst("$CSCOPE_TRANSLATED_INC", True, target, source, lambda x: x)),
+
+            CSCOPECOM_QUOTED      =
+                lambda target, source, env, for_signature:
+                    base.env_shell_escape(env, env.Split(env.subst("$CSCOPECOM", True, target, source, lambda x: x))),
+
             CSCOPESHOWINPUT       = False,
             CSCOPECOMSTR          =
-                "$CSCOPE $CSCOPEFLAGS $CSCOPESTDINFLAGS $CSCOPELISTINCLUDES $CSCOPEOUTPUTFLAG $TARGET "
+                "(cd $CSCOPEDIRECTORY && $CSCOPECOM_QUOTED"
                     +
-                '${CSCOPESHOWINPUT and "<<\'-- END OF NAMEFILE\'" + chr(10) or ""}'
-                '${CSCOPESHOWINPUT and CSCOPELISTINPUT                      or ""}'
-                '${CSCOPESHOWINPUT and chr(10) + "-- END OF NAMEFILE"       or ""}',
+                '${CSCOPESHOWINPUT and " <<\'-- END OF NAMEFILE\'" + chr(10)    or ""}'
+                '${CSCOPESHOWINPUT and CSCOPELISTINPUT                          or ""}'
+                '${CSCOPESHOWINPUT and chr(10) + "-- END OF NAMEFILE" + chr(10) or ""}'
+                ')'
         )
 
     env['BUILDERS']['CScopeXRef'] = env.Builder\

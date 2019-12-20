@@ -279,6 +279,8 @@ shell_metachars_re = re.compile('[' + re.escape("|&;<>()$`\\\"' \t\r\n!*?[#~%]")
 def shell_escape(args):
     return [ "'" + arg.replace("'", "'\\''") + "'" if not arg or re.search(shell_metachars_re, arg) else arg for arg in args ]
 
+def env_shell_escape(env, args):
+    return [ env['ESCAPE'](arg) if not arg or re.search(shell_metachars_re, arg) else arg for arg in args ]
 
 def match_ixes(node, prefix, suffix):
     basename = os.path.split(node.get_path())[1]
