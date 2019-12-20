@@ -97,11 +97,14 @@ def run_gtags(target, source, env):
                     + \
                 [ str(target[0].dir) if work_dir is None else os.path.abspath(str(target[0].dir)) ]
 
-        # print("Targets: " + str([ str(tgt) for tgt in target ]))
-        if work_dir is not None:
-            print(' '.join([ '(' ] + base.shell_escape([ 'cd', work_dir ]) + [ '&&' ] + base.shell_escape(command) + [ ')' ]))
+        if 'GTAGSCOMSTR' in env and env['GTAGSCOMSTR'] is not None:
+            print(env.subst("$GTAGSCOMSTR", True, target, source))
         else:
-            print(' '.join(base.shell_escape(command)))
+            # print("Targets: " + str([ str(tgt) for tgt in target ]))
+            if work_dir is not None:
+                print(' '.join([ '(' ] + base.shell_escape([ 'cd', work_dir ]) + [ '&&' ] + base.shell_escape(command) + [ ')' ]))
+            else:
+                print(' '.join(base.shell_escape(command)))
 
         if 'GTAGSADDENV' in env:
             for k in  env['GTAGSADDENV']:
@@ -164,6 +167,7 @@ def generate(env, **kw):
             GTAGSADDENV         = { 'GTAGSFORCECPP': '1' },
             GTAGSCONFIGLIST     = [ '/usr/local/etc/gtags.conf', '/etc/gtags.conf', os.path.join(os.environ['HOME'], '.globalrc'), '/gtags.conf' ],
             GTAGSKEEPVARIANTDIR = False,
+            GTAGSCOMSTR         = None,
             GTAGSCONFIG     = \
                 [
                     'default:\\',
