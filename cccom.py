@@ -201,7 +201,7 @@ def write_compile_commands(target, source, env):
 
 CompileCommandsBuilder = SCons.Script.Builder\
             (
-                action = SCons.Script.Action(write_compile_commands, "Writing $TARGET"),
+                action = SCons.Script.Action(write_compile_commands, "$CCCOM_STR"),
                 multi  = True,
                 suffix = '.json'
             )
@@ -262,7 +262,8 @@ def generate(env, **kw):
             CCCOM_APPEND_FLAGS     = [ ],
             CCCOM_REMOVE_FLAGS     = [ ],
             # CCCOM_FILTER_FUNC      = lambda target, source, env, for_signature: True
-            CCCOM_ABSOLUTE_FILE    = False
+            CCCOM_ABSOLUTE_FILE    = False,
+            CCCOM_STR              = "Writing $TARGET"
         )
 
     env.AddMethod(JSONCompilationDatabase, 'CompileCommands')
