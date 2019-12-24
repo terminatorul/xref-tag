@@ -25,7 +25,20 @@ import SCons.Node
 import SCons.Environment
 import SCons.Script
 
+from SCons.Builder import DictEmitter, CompositeBuilder
+from SCons.Builder import ListEmitter
+
 import source_browse_base as base
+
+def cccom_emitter(target, source, env):
+    """ Sets `keep_targetinfo` attribute on all targets given to the emitter """
+
+    for tgt in target:
+        if not hasattr(tgt, 'attributes'):
+            tgt.attributes = SCons.Node.Node.Attrs()
+        tgt.attributes.keep_targetinfo = 1
+
+    return target, source
 
 def is_cc_source(node, cc_suffixes):
     """ check if not is a source node with name matching the convention for C and C++ source files """
@@ -265,6 +278,39 @@ def generate(env, **kw):
             CCCOM_ABSOLUTE_FILE    = False,
             CCCOM_STR              = "Writing $TARGET"
         )
+
+    if 'CCDB' in SCons.Script.ARGUMENTS:
+        getList = base.BindCallArguments(base.getList, None, None, env, False)
+        builders = [ env['BUILDERS'][name] for name in [ 'StaticObject', 'SharedObject' ] if name in env['BUILDERS'] ]
+
+        if 'Object' in env['BUILDERS']:
+            objectBuilder = env['BUILDERS']['Object']
+            if objectBuilder not in builders:
+                builders.append(objectBuilder)
+
+        for builder in builders:
+            # inject cccom_emitter in the current builder
+            if isinstance(builder.emitter, DictEmitter):
+                for ext in getList('CCCOM_SUFFIXES'):
+                    if ext in builder.emitter:
+                        if isinstance(builder.emitter[ext], ListEmitter):
+                            if cccom_emitter not in builder.emitter[ext]:
+                                builder.emitter[ext].append(cccom_emitter)
+                                # print('\033[92m' "Emitter injected in Builder list in dict" '\033[0m')
+                        else:
+                            builder.emitter[ext] = ListEmitter([ builder.emitter[ext], cccom_emitter ])
+                            # print('\033[92m' "Emitter injected in Builder dict in a new list" '\033[0m')
+                    else:
+                        build.emitter[ext] = cccom_emitter
+                        # print('\033[92m' "Emitter injected in Builder dict" '\033[0m')
+            else:
+                if isinstance(builder.emitter, ListEmitter):
+                    if cccom_emitter not in builder.emitter:
+                        builder.emitter.append(cccom_emitter)
+                        # print('\033[92m' "Emitter injected in Builder list" '\033[0m')
+                else:
+                    old_emitter = builder.emitter[ext]
+                    builder.emitter[ext] = ListEmitter([ old_emitter, cccom_emitter ])
 
     env.AddMethod(JSONCompilationDatabase, 'CompileCommands')
     env.AddMethod(JSONCompilationDatabase, 'CompilationDatabase')
