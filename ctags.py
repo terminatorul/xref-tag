@@ -28,7 +28,10 @@
 
 import sys
 import os
+import errno
+import re
 import subprocess
+import threading
 import SCons.Script
 import source_browse_base as base
 
@@ -94,6 +97,49 @@ def exists(env):
     """ Check if `ctags` command is present """
     return env['CTAGS'] if 'CTAGS' in env else None
 
+has_universal_ctags = { }
+cache_lock = threading.Lock()
+
+def check_has_universal_ctags(package, target, source, env, for_signature):
+
+    path = env['ENV']['PATH'] if 'ENV' in env and 'PATH' in env['ENV'] else ''
+
+    cmd = str\
+        (
+            env.Flatten([ env.subst('$CTAGS', 0, target, source, lambda x: x) ])
+                +
+            env.Flatten([ env.subst('$CTAGS_VERSION_FLAG', 0, target, source, lambda x: x) ]),
+        )
+
+    if path not in package.has_universal_ctags or cmd not in package.has_universal_ctags[path]:
+        package.cache_lock.acquire()
+
+        try:
+            if path not in package.has_universal_ctags or cmd not in package.has_universal_ctags[path]:
+                if path not in package.has_universal_ctags:
+                    package.has_universal_ctags[path] = { }
+
+                package.has_universal_ctags[path][cmd] = not not re.match\
+                        (
+                            r'\bUniversal\b',
+                            subprocess.check_output
+                                (
+                                    env.Flatten([ env.subst('$CTAGS', 0, target, source, lambda x: x) ])
+                                        +
+                                    env.Flatten([ env.subst('$CTAGS_VERSION_FLAG', 0, target, source, lambda x: x) ]),
+                                    env = env['ENV']
+                                ),
+                            re.IGNORECASE
+                        )
+        except OSError as error:
+            if error.errno == errno.ENOENT:
+                return None
+            raise
+        finally:
+            package.cache_lock.release()
+
+    return package.has_universal_ctags[path][cmd]
+
 def generate(env, **kw):
     """
         Populate environment with variables for the TagsFile() builder:
@@ -106,13 +152,15 @@ def generate(env, **kw):
     env.SetDefault\
         (
             CTAGS           = ctags_bin,
+            CTAGS_UNIVERSAL = base.BindCallArguments(check_has_universal_ctags, sys.modules[__package__]),
+            CTAGS_VERSION_FLAG = [ '--version' ],
             CTAGSDIRECTORY  = env.Dir('.').srcnode(),
             CTAGSFLAGS      =
                 [
                     '-h', '+.tcc.',
                     '--c-kinds=+px',
                     '--c++-kinds=+px',
-                    '--extra=+q',
+                    '${__env__.subst("$CTAGS_UNIVERSAL", 0, TARGETS, SOURCES, lambda x: x) and "--extras=+q" or "--extra=+q"}',
                     '--langmap=c++:+.tcc.',
                     '--fields=+iaSt',
                     '--totals=yes'
@@ -219,7 +267,7 @@ def generate(env, **kw):
                             +
                     env.Split(env.subst('$CTAGSOUTPUTFLAG',         True, target, source, lambda x: x))
                             +
-                    [ (env.subst('$CTAGS_TRANSLATED_TARGET', True, target, source, lambda x: x)) ]
+                    [ (env.subst('$CTAGS_TRANSLATED_TARGET',        True, target, source, lambda x: x)) ]
                             +
                     env.Split(env.subst('$CTAGS_DEF_ARGS',          True, target, source, lambda x: x)),
 
