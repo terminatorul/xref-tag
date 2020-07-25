@@ -1,5 +1,11 @@
 # xref-tag
 
+## Discontinued
+While it worked for the most part on my work projects, `xref-tag` development is now discontinued,
+mostly because of issues integrating with the (undocumented) scons API.
+
+## What is xref-tags
+
 SConstruct Tools and Builders for generating tag and cross-reference files on Linux for C and C++.
 
 A "tag" here is the file position where a symbol (a function, class, variable, ...) is defined in
